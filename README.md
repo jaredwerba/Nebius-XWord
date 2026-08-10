@@ -163,7 +163,9 @@ to `main` also auto-deploy). Notes:
   Vercel OIDC token and uses it for AI Gateway. Set `LLM_API_KEY` /
   `LLM_MODEL` project env vars to override.
 - Because the public endpoint spends gateway tokens, `/api/solve` only accepts
-  models from the `ALLOWED_MODELS` list in `api/index.py`.
+  models from the `ALLOWED_MODELS` list in `api/index.py` — currently the two
+  DeepSeek v4 Flash ids. Any gateway model still works locally through
+  `LLM_MODEL` or `--model`; the allowlist only guards the hosted demo.
 
 ## Puzzle format
 

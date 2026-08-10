@@ -58,9 +58,6 @@ def get_puzzle(puzzle_id: str) -> Puzzle:
 ALLOWED_MODELS = [
     "deepseek/deepseek-v4-flash-0731",
     "deepseek/deepseek-v4-flash",
-    "openai/gpt-4o-mini",
-    "openai/gpt-4o",
-    "anthropic/claude-sonnet-4.5",
 ]
 
 

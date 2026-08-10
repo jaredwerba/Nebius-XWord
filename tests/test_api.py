@@ -73,9 +73,17 @@ def test_stream_oracle_emits_sse_and_done():
     assert events[-1]["grid"] == ["CAT", "ARE", "TEN"]
 
 
-def test_disallowed_model_rejected_without_network():
+@pytest.mark.parametrize(
+    "model", ["openai/o3-pro", "anthropic/claude-sonnet-4.5", "openai/gpt-4o", "openai/gpt-4o-mini"]
+)
+def test_disallowed_model_rejected_without_network(model):
     res = client.post(
-        "/api/solve",
-        json={"puzzle_id": "example_3x3", "solver": "llm", "model": "openai/o3-pro"},
+        "/api/solve", json={"puzzle_id": "example_3x3", "solver": "llm", "model": model}
     )
     assert res.status_code == 400
+
+
+def test_allowlist_is_deepseek_only():
+    from api.index import ALLOWED_MODELS
+
+    assert all(m.startswith("deepseek/") for m in ALLOWED_MODELS)

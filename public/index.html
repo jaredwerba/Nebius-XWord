@@ -42,6 +42,10 @@
   }
   button.primary:hover { filter: brightness(1.08); }
   button.primary:disabled { opacity: .55; cursor: wait; }
+  .model-tag {
+    display: inline-flex; align-items: center; background: var(--lime); color: var(--ink);
+    border-radius: 10px; padding: .55rem .85rem; font-weight: 600;
+  }
 
   .layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 380px); gap: 1.25rem; align-items: start; }
   @media (max-width: 840px) { .layout { grid-template-columns: 1fr; } }
@@ -117,12 +121,7 @@
       <option value="llm">LLM agent</option>
       <option value="oracle">Oracle (answer key demo)</option>
     </select>
-    <select id="model">
-      <option value="deepseek/deepseek-v4-flash-0731">deepseek-v4-flash</option>
-      <option value="anthropic/claude-sonnet-4.5">claude-sonnet-4.5</option>
-      <option value="openai/gpt-4o">gpt-4o</option>
-      <option value="openai/gpt-4o-mini">gpt-4o-mini</option>
-    </select>
+    <span class="model-tag">deepseek-v4-flash</span>
     <button class="primary" id="solve">Solve</button>
   </div>
 
@@ -382,7 +381,7 @@ async function solve() {
   $("status").textContent = "Solving…";
   startTimer();
   try {
-    const body = { puzzle_id: current.id, solver: $("solver").value, model: $("model").value };
+    const body = { puzzle_id: current.id, solver: $("solver").value };  // model: server default
     const res = await fetch("/api/solve/stream", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
