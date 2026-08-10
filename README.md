@@ -169,6 +169,10 @@ as the unique solution.
 | example_5x5_b | 100% | 100% | 2/2 | 3.5 | 9.8k |
 | example_7x7 | 100% | 100% | 2/2 | 5.0 | 30.7k |
 
+After the prompt was trimmed for latency (see below), a single re-run of the
+same four puzzles still solved every one, in fewer turns: 2, 3, 2 and 2 turns,
+taking 18s, 57s, 123s and 85s. The 7×7 dropped from 5 turns to 2.
+
 At ~$0.014/M input and $0.028/M output, a full 4-puzzle eval run costs well
 under a cent. `anthropic/claude-sonnet-4.5` also scored 8/8 on the
 pre-LangGraph loop (3.5–5.5 turns, 6.4k–22.5k tokens) and was re-verified
