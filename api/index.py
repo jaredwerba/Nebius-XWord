@@ -16,6 +16,14 @@ sys.path.insert(0, str(ROOT / "src"))
 
 import json  # noqa: E402
 
+from dotenv import load_dotenv  # noqa: E402
+
+# Load local credentials before any request handler reads the environment.
+# Without this, the first request resolves keys before .env is loaded, and the
+# fallback chain can hand one service the other service's key. On Vercel the
+# file does not exist and the platform provides the variables, so this no-ops.
+load_dotenv(ROOT / ".env")
+
 from fastapi import FastAPI, HTTPException, Request  # noqa: E402
 from fastapi.responses import FileResponse, StreamingResponse  # noqa: E402
 from pydantic import BaseModel  # noqa: E402
@@ -65,9 +73,19 @@ NEBIUS_MODELS = {
 GATEWAY_MODELS = {
     "deepseek/deepseek-v4-flash-0731",
     "deepseek/deepseek-v4-flash",
+    "deepseek/deepseek-v4-pro",
 }
 ALLOWED_MODELS = sorted(NEBIUS_MODELS | GATEWAY_MODELS)
 DEFAULT_MODEL = "deepseek-ai/DeepSeek-V4-Pro"
+
+# The race on the page runs the SAME weights on both services, so the times
+# compare infrastructure and not model quality. The page hardcodes these two
+# ids; tests keep it consistent with the sets above.
+COMPARE_PAIR = {
+    "label": "DeepSeek V4 Pro",
+    "nebius": "deepseek-ai/DeepSeek-V4-Pro",
+    "gateway": "deepseek/deepseek-v4-pro",
+}
 
 
 def connection_for(model: str | None) -> dict:

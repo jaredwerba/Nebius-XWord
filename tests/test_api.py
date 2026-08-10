@@ -142,6 +142,25 @@ def test_each_model_routes_to_its_own_service(monkeypatch):
         assert conn["api_key"] == "gateway-token"
 
 
+def test_compare_pair_is_consistent():
+    """The race runs one id on each service; the sets must agree."""
+    from api.index import COMPARE_PAIR, GATEWAY_MODELS, NEBIUS_MODELS
+
+    assert COMPARE_PAIR["nebius"] in NEBIUS_MODELS
+    assert COMPARE_PAIR["gateway"] in GATEWAY_MODELS
+    assert COMPARE_PAIR["nebius"] != COMPARE_PAIR["gateway"]
+
+
+def test_page_and_server_agree_on_the_pair():
+    from pathlib import Path
+
+    from api.index import COMPARE_PAIR
+
+    page = (Path(__file__).parents[1] / "public" / "index.html").read_text()
+    assert COMPARE_PAIR["nebius"] in page
+    assert COMPARE_PAIR["gateway"] in page
+
+
 def test_nebius_base_url_has_no_trailing_slash():
     """A trailing slash would make the client build /v1//chat/completions."""
     from nebius_xword.agent import NEBIUS_BASE_URL

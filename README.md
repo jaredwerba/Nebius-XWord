@@ -193,6 +193,24 @@ while it solves. But its own choice of words may suit it better than a
 stranger's would. Read the results for new puzzles as a demonstration. Read the
 results for the fixed puzzles below as the measurement.
 
+## Race the two services
+
+The Race button answers one question: with the model held constant, which
+service returns the answer sooner?
+
+Press it, and the browser fires two identical requests at the same instant —
+one to Nebius Token Factory, one to Vercel AI Gateway. Both run **DeepSeek V4
+Pro**, the same weights on both sides, so the clock measures infrastructure
+and not model quality. Two cards stream each agent's moves with their own
+clocks. The verdict names the winner, gives both times and the ratio, and says
+whether both sides solved the puzzle and produced the same grid.
+
+Read the result with care. The clock starts in the browser, so it includes the
+network and any cold start. One race is one sample: providers share load, and
+turn counts differ between runs because sampling differs. Expect the ratio to
+move between clicks. A race costs a few cents, because V4 Pro is a larger
+model than the page's cheap default.
+
 ## Evaluation
 
 Each metric is an average over the number of runs you request, because the

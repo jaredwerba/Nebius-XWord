@@ -94,6 +94,26 @@
   .clues b { color: var(--purple); margin-right: .3rem; }
   .len { color: var(--dim); }
 
+  #single-run, #compare-run { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+  #single-run[hidden], #compare-run[hidden] { display: none; }
+  .mini { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+  .mini + .mini { margin-top: .7rem; }
+  .mini-head {
+    display: flex; justify-content: space-between; align-items: baseline;
+    font-size: .78rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+    color: var(--dim); margin-bottom: .35rem; font-variant-numeric: tabular-nums;
+  }
+  .mini-head b { font-size: 1.05rem; color: var(--navy); }
+  .mini-log {
+    background: var(--ink); color: #DDE9F2; border-radius: 10px; padding: .6rem .75rem;
+    font: 11.5px/1.65 ui-monospace, "SF Mono", Menlo, monospace;
+    flex: 1; min-height: 0; overflow-y: auto; white-space: pre-wrap; word-break: break-word;
+  }
+  .mini-log .t { color: #7E96A8; }
+  .mini-log .call { color: var(--lime); }
+  .mini-log .ok { color: #8BE9C3; }
+  .mini-log .err { color: #FF8A93; }
+  .mini-log .info { color: #A9BFD0; }
   .timer { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: .6rem; font-variant-numeric: tabular-nums; }
   .timer .elapsed { font-size: 1.35rem; font-weight: 800; }
   .timer .eta { color: var(--dim); font-size: .9rem; }
@@ -151,10 +171,12 @@
       </optgroup>
       <optgroup label="Vercel AI Gateway">
         <option value="deepseek/deepseek-v4-flash-0731">DeepSeek V4 Flash</option>
+        <option value="deepseek/deepseek-v4-pro">DeepSeek V4 Pro</option>
       </optgroup>
     </select>
     <button class="primary" id="solve">Solve</button>
     <button class="ghost" id="generate">✦ Generate a new puzzle, then solve it blind</button>
+    <button class="ghost" id="race">⚡ Race: Nebius vs Vercel</button>
   </div>
 
   <div class="layout">
@@ -163,11 +185,23 @@
       <div class="board-wrap"><div id="board"></div></div>
     </div>
     <div class="card panel">
-      <div class="timer">
-        <span class="elapsed" id="elapsed">0.0s</span>
-        <span class="eta" id="eta">ready</span>
+      <div id="single-run">
+        <div class="timer">
+          <span class="elapsed" id="elapsed">0.0s</span>
+          <span class="eta" id="eta">ready</span>
+        </div>
+        <div id="log"><span class="info">The agent's moves appear here when you press Solve.</span></div>
       </div>
-      <div id="log"><span class="info">The agent's moves appear here when you press Solve.</span></div>
+      <div id="compare-run" hidden>
+        <div class="mini">
+          <div class="mini-head"><span>Nebius Token Factory</span><b id="clock-nebius">0.0s</b></div>
+          <div class="mini-log" id="log-nebius"></div>
+        </div>
+        <div class="mini">
+          <div class="mini-head"><span>Vercel AI Gateway</span><b id="clock-vercel">0.0s</b></div>
+          <div class="mini-log" id="log-vercel"></div>
+        </div>
+      </div>
     </div>
     <div class="card panel">
       <div class="clues">
@@ -469,8 +503,8 @@ function handleEvent(e) {
   }
 }
 
-// Consume one server-sent event stream, dispatching each event to the log.
-async function consume(url, body) {
+// Consume one server-sent event stream, dispatching each event to a handler.
+async function consume(url, body, handler = handleEvent) {
   const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -491,15 +525,17 @@ async function consume(url, body) {
     buffer = chunks.pop();
     for (const chunk of chunks) {
       const line = chunk.split("\n").find((l) => l.startsWith("data: "));
-      if (line) handleEvent(JSON.parse(line.slice(6)));
+      if (line) handler(JSON.parse(line.slice(6)));
     }
   }
 }
 
 // Wrap a run: reset the log and timer, keep the buttons parked until it ends.
 async function withRun(work, { prior, status }) {
-  const buttons = [$("solve"), $("generate")];
+  const buttons = [$("solve"), $("generate"), $("race")];
   buttons.forEach((b) => (b.disabled = true));
+  $("single-run").hidden = false;
+  $("compare-run").hidden = true;
   $("log").innerHTML = "";
   $("status").className = "";
   $("status").textContent = status;
@@ -522,6 +558,151 @@ const solve = () =>
   withRun(() => consume("/api/solve/stream",
                         { puzzle_id: current.id, solver: "llm", model: chosenModel() }),
           { prior: 45, status: "Solving…" });
+
+// -------------------------------------------------------------------- race
+
+// The same weights on both services, so the race compares infrastructure.
+// Must match COMPARE_PAIR in api/index.py (a test keeps them in agreement).
+const PAIR = {
+  label: "DeepSeek V4 Pro",
+  nebius: "deepseek-ai/DeepSeek-V4-Pro",
+  vercel: "deepseek/deepseek-v4-pro",
+};
+
+function cardLine(card, cls, text) {
+  const line = document.createElement("div");
+  const t = ((performance.now() - card.t0) / 1000).toFixed(1).padStart(5);
+  line.innerHTML = `<span class="t">${t}s</span> `;
+  const span = document.createElement("span");
+  span.className = cls;
+  span.textContent = text;
+  line.appendChild(span);
+  card.logEl.appendChild(line);
+  card.logEl.scrollTop = card.logEl.scrollHeight;
+}
+
+function makeCard(side, t0) {
+  const card = {
+    side, t0,
+    clockEl: $("clock-" + side),
+    logEl: $("log-" + side),
+    end: null, payload: null, error: null,
+  };
+  card.logEl.innerHTML = "";
+  card.clockEl.textContent = "0.0s";
+  card.fail = (message) => {
+    if (card.end) return;
+    card.error = message;
+    card.end = performance.now();
+    cardLine(card, "err", message);
+  };
+  card.handler = (e) => {
+    switch (e.event) {
+      case "start":
+        cardLine(card, "info", `started · ${e.model}`);
+        break;
+      case "llm":
+        cardLine(card, "info", `turn ${e.turn}`);
+        break;
+      case "tool_call": {
+        const args = e.tool === "fill_slot"
+          ? `${e.args.slot} = ${String(e.args.word || "").toUpperCase()}`
+          : Object.keys(e.args || {}).length ? JSON.stringify(e.args) : "";
+        cardLine(card, "call", `→ ${e.tool} ${args}`.trimEnd());
+        break;
+      }
+      case "tool_result": {
+        const r = shortResult(e.result);
+        cardLine(card, r.cls, `  ${r.text}`);
+        break;
+      }
+      case "error":
+        card.fail(e.message);
+        break;
+      case "done": {
+        card.end = performance.now();
+        card.payload = e;
+        const secs = ((card.end - t0) / 1000).toFixed(1);
+        card.clockEl.textContent = secs + "s";
+        const s = e.score || {};
+        cardLine(card, s.solved ? "ok" : "err",
+                 `done in ${secs}s — ${s.solved ? "SOLVED" : "not solved"} · ` +
+                 `${e.stats.turns} turns · ${e.stats.tokens} tokens`);
+        break;
+      }
+    }
+  };
+  return card;
+}
+
+function raceVerdict(nebius, vercel) {
+  const time = (c) => (c.end - c.t0) / 1000;
+  if (!nebius.payload && !vercel.payload) {
+    $("status").className = "err";
+    $("status").textContent = "Neither side finished. Try again.";
+    return;
+  }
+  if (!nebius.payload || !vercel.payload) {
+    const ok = nebius.payload ? nebius : vercel;
+    const okName = nebius.payload ? "Nebius" : "Vercel";
+    const other = nebius.payload ? "Vercel" : "Nebius";
+    renderBoard(current.grid, ok.payload.grid);
+    $("status").className = "ok";
+    $("status").textContent =
+      `${okName} finished in ${time(ok).toFixed(1)}s — ${other} did not finish.`;
+    return;
+  }
+  const tn = time(nebius), tv = time(vercel);
+  const nebiusWon = tn <= tv;
+  const [winName, winT, loseT] = nebiusWon ? ["Nebius", tn, tv] : ["Vercel", tv, tn];
+  const winner = nebiusWon ? nebius : vercel;
+  const ratio = (loseT / winT).toFixed(1);
+  const gridsMatch =
+    JSON.stringify(nebius.payload.grid) === JSON.stringify(vercel.payload.grid);
+  const solvedSummary =
+    nebius.payload.score?.solved && vercel.payload.score?.solved ? "both solved"
+    : `Nebius ${nebius.payload.score?.solved ? "solved" : "NOT solved"}, ` +
+      `Vercel ${vercel.payload.score?.solved ? "solved" : "NOT solved"}`;
+  renderBoard(current.grid, winner.payload.grid);
+  $("status").className = "ok";
+  $("status").textContent =
+    `${winName} wins — ${winT.toFixed(1)}s vs ${loseT.toFixed(1)}s ` +
+    `(${ratio}× faster) · same model (${PAIR.label}) · ${solvedSummary} · ` +
+    `grids ${gridsMatch ? "identical" : "differ"}`;
+}
+
+async function race() {
+  const buttons = [$("solve"), $("generate"), $("race")];
+  buttons.forEach((b) => (b.disabled = true));
+  $("single-run").hidden = true;
+  $("compare-run").hidden = false;
+  $("status").className = "";
+  $("status").textContent = `Racing ${PAIR.label} on both services…`;
+  const base =
+    generated && current.id === generated.id
+      ? { solver: "llm", puzzle: generated }
+      : { solver: "llm", puzzle_id: current.id };
+  const t0 = performance.now();
+  const nebius = makeCard("nebius", t0);
+  const vercel = makeCard("vercel", t0);
+  const clock = setInterval(() => {
+    for (const c of [nebius, vercel]) {
+      if (!c.end) c.clockEl.textContent = ((performance.now() - t0) / 1000).toFixed(1) + "s";
+    }
+  }, 100);
+  try {
+    await Promise.allSettled([
+      consume("/api/solve/stream", { ...base, model: PAIR.nebius }, nebius.handler)
+        .catch((err) => nebius.fail(err.message)),
+      consume("/api/solve/stream", { ...base, model: PAIR.vercel }, vercel.handler)
+        .catch((err) => vercel.fail(err.message)),
+    ]);
+  } finally {
+    clearInterval(clock);
+    buttons.forEach((b) => (b.disabled = false));
+  }
+  raceVerdict(nebius, vercel);
+}
 
 // Generation and solving are separate requests so neither has to fit both
 // into one function timeout; to the user it is still a single action.
@@ -556,6 +737,7 @@ async function init() {
   sel.onchange = () => loadPuzzle(sel.value);
   $("solve").onclick = solve;
   $("generate").onclick = generate;
+  $("race").onclick = race;
   if (puzzles.length) await loadPuzzle(puzzles[0].id);
 }
 init();
