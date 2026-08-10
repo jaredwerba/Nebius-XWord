@@ -1,0 +1,49 @@
+import pytest
+
+fastapi = pytest.importorskip("fastapi")
+from fastapi.testclient import TestClient  # noqa: E402
+
+from api.index import app  # noqa: E402
+
+client = TestClient(app)
+
+
+def test_home_serves_ui():
+    res = client.get("/")
+    assert res.status_code == 200
+    assert "Nebius-XWord" in res.text
+
+
+def test_list_puzzles():
+    res = client.get("/api/puzzles")
+    assert res.status_code == 200
+    ids = {p["id"] for p in res.json()}
+    assert {"example_3x3", "example_mini_5x5", "example_5x5_b", "example_7x7"} <= ids
+
+
+def test_puzzle_detail():
+    res = client.get("/api/puzzles/example_7x7")
+    assert res.status_code == 200
+    body = res.json()
+    assert len(body["grid"]) == 7
+    assert len(body["slots"]) == 22
+    assert all(slot["clue"] for slot in body["slots"])
+
+
+def test_puzzle_detail_404():
+    assert client.get("/api/puzzles/nope").status_code == 404
+    assert client.get("/api/puzzles/..%2Fnope").status_code == 404
+
+
+def test_oracle_solve_scores_perfect():
+    res = client.post("/api/solve", json={"puzzle_id": "example_3x3", "solver": "oracle"})
+    assert res.status_code == 200
+    body = res.json()
+    assert body["complete"] is True
+    assert body["score"] == {"letter_accuracy": 1.0, "word_accuracy": 1.0, "solved": True}
+    assert body["slots"]["1A"] == "CAT"
+
+
+def test_unknown_solver_rejected():
+    res = client.post("/api/solve", json={"puzzle_id": "example_3x3", "solver": "magic"})
+    assert res.status_code == 400

@@ -62,9 +62,9 @@ def test_solution_completes_grid(mini):
     assert grid.is_complete()
 
 
-@pytest.mark.parametrize("name", ["example_3x3.json", "example_mini_5x5.json"])
-def test_example_puzzles_are_valid(name):
-    assert verify_puzzle(load_puzzle(PUZZLES / name)) == []
+@pytest.mark.parametrize("path", sorted(PUZZLES.glob("*.json")), ids=lambda p: p.stem)
+def test_example_puzzles_are_valid(path):
+    assert verify_puzzle(load_puzzle(path)) == []
 
 
 def test_rejects_bad_template():

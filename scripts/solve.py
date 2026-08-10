@@ -21,13 +21,17 @@ def main() -> None:
 
     puzzle = load_puzzle(args.puzzle)
     agent = CrosswordAgent(model=args.model, verbose=not args.quiet)
-    grid = agent.solve(puzzle)
+    result = agent.solve(puzzle)
 
-    print(f"\n{puzzle.title}\n{grid.render()}")
+    print(f"\n{puzzle.title}\n{result.grid.render()}")
+    print(
+        f"model: {result.model} | turns: {result.turns} | "
+        f"tokens: {result.total_tokens} | submitted: {result.submitted}"
+    )
     if puzzle.solution is not None:
         from eval.metrics import score_grid
 
-        print(f"\nscore: {score_grid(grid, puzzle.solution)}")
+        print(f"score: {score_grid(result.grid, puzzle.solution)}")
 
 
 if __name__ == "__main__":

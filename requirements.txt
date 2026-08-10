@@ -1,0 +1,5 @@
+# Runtime dependencies for the Vercel deployment (see pyproject.toml for the
+# installable package + dev tooling).
+fastapi>=0.115
+openai>=1.40
+python-dotenv>=1.0

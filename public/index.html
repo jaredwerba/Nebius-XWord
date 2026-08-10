@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nebius-XWord</title>
+<style>
+  :root {
+    --bg: #101418; --panel: #1a2027; --line: #2c3540;
+    --text: #e6ebf0; --dim: #8b98a5; --accent: #4cc38a; --bad: #e5695e;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 2rem 1rem; background: var(--bg); color: var(--text);
+    font: 15px/1.5 -apple-system, "Segoe UI", Roboto, sans-serif;
+    display: flex; justify-content: center;
+  }
+  main { max-width: 860px; width: 100%; }
+  h1 { font-size: 1.4rem; margin: 0 0 .25rem; }
+  h1 span { color: var(--accent); }
+  .sub { color: var(--dim); margin: 0 0 1.25rem; }
+  .controls { display: flex; gap: .6rem; flex-wrap: wrap; margin-bottom: 1.25rem; }
+  select, button {
+    background: var(--panel); color: var(--text); border: 1px solid var(--line);
+    border-radius: 8px; padding: .5rem .8rem; font-size: .95rem;
+  }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #08130d; font-weight: 600; cursor: pointer; }
+  button.primary:disabled { opacity: .5; cursor: wait; }
+  .layout { display: flex; gap: 2rem; flex-wrap: wrap; align-items: flex-start; }
+  #board { display: grid; gap: 2px; background: var(--line); border: 2px solid var(--line); border-radius: 6px; }
+  .cell {
+    width: 52px; height: 52px; background: var(--panel); position: relative;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.5rem; font-weight: 600; text-transform: uppercase;
+  }
+  .cell.block { background: #060a0d; }
+  .cell .num { position: absolute; top: 2px; left: 4px; font-size: .58rem; font-weight: 400; color: var(--dim); }
+  .cell.filled { color: var(--accent); }
+  .clues { flex: 1; min-width: 240px; display: flex; gap: 2rem; }
+  .clues h2 { font-size: .8rem; letter-spacing: .1em; text-transform: uppercase; color: var(--dim); margin: 0 0 .4rem; }
+  .clues ol { list-style: none; margin: 0 0 1rem; padding: 0; }
+  .clues li { margin-bottom: .35rem; }
+  .clues b { color: var(--accent); font-weight: 600; margin-right: .35rem; }
+  #status { margin-top: 1.25rem; padding: .75rem 1rem; border: 1px solid var(--line); border-radius: 8px; color: var(--dim); min-height: 1.5rem; }
+  #status.ok { border-color: var(--accent); color: var(--text); }
+  #status.err { border-color: var(--bad); color: var(--bad); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Nebius-<span>XWord</span></h1>
+  <p class="sub">An LLM agent that solves crossword puzzles through a verified tool loop.</p>
+
+  <div class="controls">
+    <select id="puzzle"></select>
+    <select id="solver">
+      <option value="llm">LLM agent</option>
+      <option value="oracle">Oracle (answer key demo)</option>
+    </select>
+    <select id="model">
+      <option value="anthropic/claude-sonnet-4.5">claude-sonnet-4.5</option>
+      <option value="openai/gpt-4o">gpt-4o</option>
+      <option value="openai/gpt-4o-mini">gpt-4o-mini</option>
+    </select>
+    <button class="primary" id="solve">Solve</button>
+  </div>
+
+  <div class="layout">
+    <div id="board"></div>
+    <div class="clues">
+      <div><h2>Across</h2><ol id="across"></ol></div>
+      <div><h2>Down</h2><ol id="down"></ol></div>
+    </div>
+  </div>
+
+  <div id="status">Pick a puzzle and press Solve.</div>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let current = null;
+
+async function api(path, opts) {
+  const res = await fetch(path, opts);
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.detail || res.statusText);
+  return body;
+}
+
+function renderBoard(rows, letters) {
+  const numbers = {};
+  for (const slot of current.slots) {
+    const key = slot.row + "," + slot.col;
+    numbers[key] = Math.min(numbers[key] ?? Infinity, slot.number);
+  }
+  const board = $("board");
+  board.style.gridTemplateColumns = `repeat(${rows[0].length}, 52px)`;
+  board.innerHTML = "";
+  rows.forEach((row, r) => {
+    [...row].forEach((ch, c) => {
+      const cell = document.createElement("div");
+      cell.className = "cell" + (ch === "#" ? " block" : "");
+      const num = numbers[r + "," + c];
+      if (ch !== "#" && num !== undefined) {
+        cell.innerHTML = `<span class="num">${num}</span>`;
+      }
+      const letter = letters ? letters[r][c] : ch;
+      if (ch !== "#" && letter !== "." && letter !== "#") {
+        cell.classList.add("filled");
+        cell.append(letter);
+      }
+      board.appendChild(cell);
+    });
+  });
+}
+
+function renderClues() {
+  for (const dir of ["across", "down"]) {
+    const list = $(dir);
+    list.innerHTML = "";
+    current.slots.filter((s) => s.direction === dir).forEach((s) => {
+      const li = document.createElement("li");
+      li.innerHTML = `<b>${s.number}</b>${s.clue} <span style="color:var(--dim)">(${s.length})</span>`;
+      list.appendChild(li);
+    });
+  }
+}
+
+async function loadPuzzle(id) {
+  current = await api(`/api/puzzles/${id}`);
+  renderBoard(current.grid, null);
+  renderClues();
+  $("status").className = "";
+  $("status").textContent = "Pick a puzzle and press Solve.";
+}
+
+async function solve() {
+  const btn = $("solve");
+  btn.disabled = true;
+  $("status").className = "";
+  $("status").textContent = "Solving… (the LLM agent can take a minute)";
+  try {
+    const body = { puzzle_id: current.id, solver: $("solver").value, model: $("model").value };
+    const res = await api("/api/solve", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    renderBoard(current.grid, res.grid);
+    const parts = [];
+    if (res.score) {
+      parts.push(`letters ${(res.score.letter_accuracy * 100).toFixed(0)}%`);
+      parts.push(`words ${(res.score.word_accuracy * 100).toFixed(0)}%`);
+      parts.push(res.score.solved ? "SOLVED ✓" : "not fully solved");
+    }
+    if (res.stats.model) parts.push(`model ${res.stats.model}`);
+    if (res.stats.turns) parts.push(`${res.stats.turns} turns, ${res.stats.tokens} tokens`);
+    $("status").className = "ok";
+    $("status").textContent = parts.join(" · ") || "Done.";
+  } catch (err) {
+    $("status").className = "err";
+    $("status").textContent = err.message;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function init() {
+  const puzzles = await api("/api/puzzles");
+  const sel = $("puzzle");
+  puzzles.forEach((p) => sel.add(new Option(`${p.title}`, p.id)));
+  sel.onchange = () => loadPuzzle(sel.value);
+  $("solve").onclick = solve;
+  if (puzzles.length) await loadPuzzle(puzzles[0].id);
+}
+init();
+</script>
+</body>
+</html>

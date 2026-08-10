@@ -1,15 +1,17 @@
 """Deterministic (non-LLM) solving utilities.
 
-Currently: pattern matching against a wordlist and puzzle-file validation.
-Planned: a backtracking constraint solver to serve as a non-LLM baseline and
-as a repair step for near-complete LLM fills.
+Pattern matching, puzzle-file validation, and a wordlist-backed backtracking
+filler. The filler serves three roles: a structure-only baseline for the eval
+harness, a construction tool for building new puzzles, and (eventually) a
+repair step for near-complete LLM fills.
 """
 
 from __future__ import annotations
 
+import random
 from typing import Iterable
 
-from .grid import BLOCK, EMPTY, Puzzle
+from .grid import BLOCK, EMPTY, Grid, Puzzle
 
 
 def matches(pattern: str, word: str) -> bool:
@@ -23,6 +25,73 @@ def matches(pattern: str, word: str) -> bool:
 def candidates(pattern: str, words: Iterable[str]) -> list[str]:
     """All words from a wordlist that fit a slot pattern."""
     return [w.upper() for w in words if matches(pattern, w)]
+
+
+def fill_grid(
+    grid: Grid,
+    words: Iterable[str],
+    rng: random.Random | None = None,
+    max_steps: int = 200_000,
+) -> bool:
+    """Fill every empty slot with wordlist words consistent at all crossings.
+
+    Backtracking with minimum-remaining-values slot ordering and no duplicate
+    words. Mutates ``grid`` in place; returns True on success (grid filled) or
+    False (grid restored to its starting state). Pre-filled letters are
+    respected, so seeding slots before calling constrains the fill.
+    """
+    by_len: dict[int, list[str]] = {}
+    for word in words:
+        word = word.strip().upper()
+        if word.isalpha():
+            by_len.setdefault(len(word), []).append(word)
+    if rng is not None:
+        for pool in by_len.values():
+            rng.shuffle(pool)
+    wordset = {w for pool in by_len.values() for w in pool}
+
+    # Slots complete before we start (seeds) are accepted as-is.
+    pre_filled = {s for s in grid.slots if EMPTY not in grid.slot_pattern(s)}
+    used = {grid.slot_pattern(s) for s in pre_filled}
+    steps = 0
+
+    def backtrack() -> bool:
+        nonlocal steps
+        # Minimum-remaining-values: fill the most constrained slot first.
+        # Slots completed passively by crossings must still spell real words.
+        best_slot, best_cands = None, None
+        for slot_id in grid.slots:
+            pattern = grid.slot_pattern(slot_id)
+            if EMPTY not in pattern:
+                if slot_id not in pre_filled and pattern not in wordset:
+                    return False
+                continue
+            cands = [
+                w for w in by_len.get(len(pattern), []) if w not in used and matches(pattern, w)
+            ]
+            if best_cands is None or len(cands) < len(best_cands):
+                best_slot, best_cands = slot_id, cands
+                if not cands:
+                    return False  # dead end
+        if best_slot is None:
+            return True  # everything filled
+        cells = grid.slots[best_slot].cells()
+        saved = [grid.cells[r][c] for r, c in cells]
+        for word in best_cands:
+            steps += 1
+            if steps > max_steps:
+                break
+            for (r, c), letter in zip(cells, word):
+                grid.cells[r][c] = letter
+            used.add(word)
+            if backtrack():
+                return True
+            used.discard(word)
+            for (r, c), letter in zip(cells, saved):
+                grid.cells[r][c] = letter
+        return False
+
+    return backtrack()
 
 
 def verify_puzzle(puzzle: Puzzle) -> list[str]:
