@@ -103,11 +103,20 @@ Work is split so each side does what it is reliable at:
    score the attempt.
 
 Generating and solving are two separate requests (`POST /api/generate`, then
-`POST /api/solve/stream` with the puzzle inline). Together they run well past
-a single function timeout — a measured end-to-end run took 322s — so the
-browser holds the finished puzzle between the two calls and hands it back.
-The answer key rides along in that hand-off purely so the result can be
-scored; it is never part of what the solver reads.
+`POST /api/solve/stream` with the puzzle inline). Together they exceed a
+single function timeout, so the browser holds the finished puzzle between the
+two calls and hands it back. The answer key rides along in that hand-off
+purely so the result can be scored; it is never part of what the solver reads.
+
+**Latency is the honest weak point.** DeepSeek v4 Flash reasons at length, and
+measured wall-clock varies widely: clue writing has taken 54s to 206s, and a
+blind solve of a generated 5×5 about 150s. Two lessons came out of measuring
+it. Telling the agent to open with `get_state` wasted a whole turn, because
+the opening message already contains the grid — and a separate "confirm before
+submitting" turn cost over 200s to re-verify a grid the engine had already
+validated. Removing both cut a solve from roughly 420s to 153s. Generation
+still occasionally approaches the 300s function ceiling; if it does, the page
+says so and you press the button again.
 
 Caveat worth stating plainly: the same model writes the clues and solves them.
 It cannot see the answers while solving, but its own phrasing may suit it

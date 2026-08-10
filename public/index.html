@@ -495,7 +495,9 @@ const generate = () =>
   withRun(async () => {
     generated = null;
     await consume("/api/generate", {});
-    if (!generated) throw new Error("generation did not return a puzzle");
+    if (!generated) {
+      throw new Error("the generator did not finish in time — press generate again");
+    }
     logLine("info", "solving blind — the agent sees the clues, never the answers…");
     await consume("/api/solve/stream", { puzzle: generated, solver: "llm" });
   }, { prior: 130, status: "Building a new puzzle, then solving it blind…" });
