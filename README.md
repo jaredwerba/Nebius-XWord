@@ -1,187 +1,222 @@
 # Nebius-XWord
 
-An AI agent that solves crossword puzzles, with a deterministic grid engine, an
-evaluation harness, and a web UI.
+Nebius-XWord is an AI agent that solves crossword puzzles.
 
-**Live demo: <https://nebius-xword.vercel.app>** — pick a puzzle, pick a model,
-press Solve, and watch the agent fill the grid (the Oracle option demos the
-pipeline without spending tokens).
+Try it here: **<https://nebius-xword.vercel.app>**
 
-The agent is a **LangGraph** `StateGraph` with two nodes: an *agent* node
-(the LLM, bound to four tools) and a *tools* node backed by a deterministic
-grid engine. The model inspects the grid and clues, fills the slots it is
-confident about, uses crossing letters to constrain the rest, and backtracks
-when the grid reports conflicts. The run ends when the model calls `submit`,
-stops calling tools, or hits the turn cap. The grid engine enforces the rules
-(slot detection, numbering, conflict checking), so the model is never trusted
-about grid state — only about answers.
+Choose a puzzle and press Solve. The grid fills in while you watch, and a log
+shows each move the agent makes. Or press Generate. The agent then builds a
+new puzzle and solves it without the answers.
+
+## How it works
+
+The agent is a [LangGraph](https://langchain-ai.github.io/langgraph/) graph
+with two nodes. The first node calls the model. The second node applies the
+model's moves to the grid.
+
+A Python engine owns the grid. The engine finds the slots and numbers them. It
+also checks every letter. If an answer disagrees with a crossing word, the
+engine refuses the answer and gives the reason. The model reads that reason and
+tries again.
+
+The model has four tools:
+
+| Tool | Effect |
+|---|---|
+| `get_state` | Shows the grid, the clues, and the letters found so far. |
+| `fill_slot` | Writes an answer into a slot. |
+| `clear_slot` | Empties a slot. |
+| `submit` | Ends the run. |
+
+The run stops for one of three reasons. The model submits the grid. Or the
+model stops calling tools. Or the agent reaches its turn limit.
+
+The engine is the authority on the grid. The model is the authority on the
+answers. This division is the core idea: a wrong answer stays a wrong answer,
+and it cannot become a broken grid.
 
 ## Repository layout
 
 ```
-├── src/nebius_xword/     # core package (dependency-free except agent.py)
-│   ├── grid.py           #   grid model: slots, numbering, fills, conflicts
-│   ├── tools.py          #   tool schemas + executor exposed to the LLM
-│   ├── graph.py          #   LangGraph StateGraph: agent + tools nodes, stops
-│   ├── agent.py          #   CrosswordAgent: model config + graph invocation
-│   ├── generator.py      #   fresh puzzles: wordlist fill + LLM-written clues
-│   └── solver.py         #   pattern matching, backtracking filler, validation
-├── api/index.py          # FastAPI app (also the Vercel entry point)
-├── public/index.html     # web UI: pick a puzzle, watch the agent solve it
-├── data/puzzles/         # hand-verified example puzzles (JSON, with keys)
-├── eval/                 # evaluation harness + metrics
-├── scripts/              # CLI entry points
-├── tests/                # pytest suite (no API key needed)
-├── vercel.json           # deployment config (all routes -> the ASGI app)
-└── requirements.txt      # runtime deps for Vercel (pyproject has the rest)
+├── src/nebius_xword/     # core package (only agent.py needs the LLM libraries)
+│   ├── grid.py           #   the grid: slots, numbering, fills, conflicts
+│   ├── tools.py          #   the four tools, and the code that runs them
+│   ├── graph.py          #   the LangGraph graph: two nodes and the stop rules
+│   ├── agent.py          #   CrosswordAgent: model setup, and the solve loop
+│   ├── generator.py      #   new puzzles: grid search, then clues from the model
+│   └── solver.py         #   pattern matching, grid filler, puzzle validation
+├── api/index.py          # FastAPI app, and the entry point on Vercel
+├── public/index.html     # the web page
+├── data/puzzles/         # four example puzzles, each with its answer key
+├── data/wordlist.txt     # 1,663 common words, used to build new grids
+├── eval/                 # the evaluation harness and its metrics
+├── scripts/              # command line entry points
+├── tests/                # the test suite; no API key is necessary
+├── vercel.json           # deployment settings
+└── requirements.txt      # the packages Vercel installs
 ```
 
-## LLM configuration
+## Models
 
-Two interchangeable OpenAI-compatible backends (see `.env.example`):
+The agent speaks the OpenAI chat API. Two backends work, and you do not change
+any code to move between them.
 
-| | env vars | default model |
+| Backend | Environment variables | Default model |
 |---|---|---|
-| **Vercel AI Gateway** (default) | `LLM_API_KEY` (+ optional `LLM_MODEL`, `LLM_BASE_URL`) | `deepseek/deepseek-v4-flash-0731` |
-| **Nebius AI Studio** (direct) | `NEBIUS_API_KEY` (+ optional `NEBIUS_MODEL`, `NEBIUS_BASE_URL`) | `meta-llama/Meta-Llama-3.1-70B-Instruct` |
+| Vercel AI Gateway (default) | `LLM_API_KEY`, and optionally `LLM_MODEL` and `LLM_BASE_URL` | `deepseek/deepseek-v4-flash-0731` |
+| Nebius AI Studio (direct) | `NEBIUS_API_KEY`, and optionally `NEBIUS_MODEL` and `NEBIUS_BASE_URL` | `meta-llama/Meta-Llama-3.1-70B-Instruct` |
 
-The default is the dated DeepSeek checkpoint so eval numbers stay
-reproducible; the undated alias `deepseek/deepseek-v4-flash` tracks weight
-updates and is also allowlisted.
+The default is a dated DeepSeek checkpoint. A dated checkpoint keeps the
+evaluation numbers repeatable. The undated name,
+`deepseek/deepseek-v4-flash`, follows each new release of the weights.
 
-When deployed on Vercel, the function's OIDC token is used for AI Gateway
-automatically, so no key needs to be configured. Explicit constructor args >
-`LLM_*` > `NEBIUS_*`.
+On Vercel you do not need a key at all. The deployment sends its own OIDC
+token to the AI Gateway.
 
-## Setup
+Settings have this order of precedence: constructor arguments first, then the
+`LLM_*` variables, then the `NEBIUS_*` variables.
+
+## Install
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
-cp .env.example .env   # then add your AI Gateway or Nebius key
+cp .env.example .env
 ```
+
+Then put your AI Gateway key or your Nebius key in `.env`.
 
 ## Run
 
-**CLI** — solve one puzzle (prints the tool-call trace, final grid, and score):
+Solve one puzzle from the command line. The output shows each tool call, the
+final grid, and the score.
 
 ```bash
 python scripts/solve.py data/puzzles/example_mini_5x5.json
 ```
 
-**Web UI** — same agent behind a FastAPI app:
+Start the web page. Open <http://127.0.0.1:8000> after the server starts.
 
 ```bash
 uvicorn api.index:app --reload
 ```
 
-then open http://127.0.0.1:8000. The `Oracle` solver in the UI demos the full
-pipeline without an API key.
-
-**Evaluation** — run a solver over every puzzle in `data/puzzles/`:
+Score the agent on every puzzle in `data/puzzles/`. Three runs give you a
+sense of the variation between attempts.
 
 ```bash
 python -m eval.run_eval --solver llm --runs 3
 ```
 
-## Generating fresh puzzles
+## New puzzles
 
-The demo can build a puzzle that has never existed and then solve it blind.
-Work is split so each side does what it is reliable at:
+The demo can build a puzzle that did not exist before. Each half of the task
+goes to the side that does it well.
 
-1. **The grid is filled by search, not by the model.** `generator.py` picks a
-   block template and runs the backtracking filler in `solver.py` over
-   `data/wordlist.txt` (~1.7k common words). Every entry is therefore a real
-   word and every crossing is consistent by construction — the model cannot
-   invent a broken puzzle. Typical fill: under 0.1s for a 5×5, ~1s for the 7×7.
-2. **The model writes the clues**, plus a title, in one JSON reply. Clues are
-   validated: any clue that contains its own answer is masked to `___` (which
-   is a legitimate fill-in-the-blank clue), and a retry is issued.
-3. **The solve is blind.** The agent gets a fresh, empty grid and the clues.
-   The answer key never enters its context; it is used afterwards, only to
-   score the attempt.
+**A search fills the grid.** `generator.py` selects a block layout. Then the
+backtracking filler in `solver.py` fits words from `data/wordlist.txt` into it.
+Every entry is therefore a real word, and every crossing agrees. The model
+cannot produce a broken puzzle, because the model does not build the grid. A
+5×5 grid fills in less than 0.1 seconds. The 7×7 grid takes about 1 second.
 
-Generating and solving are two separate requests (`POST /api/generate`, then
-`POST /api/solve/stream` with the puzzle inline). Together they exceed a
-single function timeout, so the browser holds the finished puzzle between the
-two calls and hands it back. The answer key rides along in that hand-off
-purely so the result can be scored; it is never part of what the solver reads.
+**The model writes the clues.** It returns the clues and a title in one JSON
+reply. Each clue is then checked. If a clue contains its own answer, the code
+replaces the answer with `___` and asks the model again. A blank is a fair
+crossword clue, so nothing is lost.
 
-**Latency is the honest weak point.** DeepSeek v4 Flash reasons at length, and
-measured wall-clock varies widely: clue writing has taken 54s to 206s, and a
-blind solve of a generated 5×5 about 150s. Two lessons came out of measuring
-it. Telling the agent to open with `get_state` wasted a whole turn, because
-the opening message already contains the grid — and a separate "confirm before
-submitting" turn cost over 200s to re-verify a grid the engine had already
-validated. Removing both cut a solve from roughly 420s to 153s. Generation
-still occasionally approaches the 300s function ceiling; if it does, the page
-says so and you press the button again.
+**The agent solves blind.** It receives an empty grid and the clues. It does
+not receive the answers. The answer key stays aside, and it is used only to
+score the finished attempt.
 
-Caveat worth stating plainly: the same model writes the clues and solves them.
-It cannot see the answers while solving, but its own phrasing may suit it
-better than a stranger's would. Treat generated-puzzle scores as a
-demonstration, and the fixed puzzle set below as the real measurement.
+Generation and solving are two separate requests: `POST /api/generate`, then
+`POST /api/solve/stream` with the puzzle in the body. Together they take longer
+than one function is allowed to run, so the browser holds the puzzle between
+the two calls. The answer key travels with it, only so that the result can be
+scored. The key is never part of what the agent reads.
 
-## Evaluation methodology
+### Speed is the weak point
 
-**Metrics** (per puzzle, averaged over `--runs` repetitions because LLM solves
-are stochastic):
+DeepSeek v4 Flash thinks at length, and the time it takes varies. Clue writing
+has taken between 52 and 206 seconds. A blind solve of a new 5×5 grid takes
+about 25 to 150 seconds.
 
-- **Letter accuracy** — correct open cells / total open cells. Partial credit;
-  the primary quality signal.
-- **Word accuracy** — slots whose full answer is correct / total slots.
-  Punishes near-misses that break crossings.
-- **Solved rate** — fraction of runs with a fully correct grid. The headline
-  number.
-- **Cost** — mean agent turns and total tokens per solve (llm solver only).
+Two measurements changed the design. The prompt used to tell the agent to call
+`get_state` first. That instruction wasted a full turn, because the first
+message already contains the grid. A second instruction told the agent to
+confirm its work before it submitted. That check cost more than 200 seconds,
+and it re-examined a grid the engine had already approved. Both instructions
+are gone. A solve fell from about 420 seconds to 153 seconds.
 
-**Baselines** bracket the agent's score and validate the harness itself:
+Generation can still come close to the 300 second limit. If it does, the page
+tells you, and you press the button again.
 
-| solver | what it does | expected score |
+### One caveat
+
+The same model writes the clues and then solves them. It cannot see the answers
+while it solves. But its own choice of words may suit it better than a
+stranger's would. Read the results for new puzzles as a demonstration. Read the
+results for the fixed puzzles below as the measurement.
+
+## Evaluation
+
+Each metric is an average over the number of runs you request, because the
+model does not answer the same way every time.
+
+- **Letter accuracy.** Correct open cells, divided by total open cells. This
+  metric gives partial credit.
+- **Word accuracy.** Correct slots, divided by total slots. This metric
+  punishes an answer that is almost right, because it breaks its crossings.
+- **Solved rate.** The number of runs that produce a fully correct grid.
+- **Cost.** The mean number of turns and tokens for each solve.
+
+Four solvers bracket the score. Two of them also prove that the harness itself
+is correct.
+
+| Solver | What it does | Expected score |
 |---|---|---|
-| `empty` | leaves the grid blank | 0% (floor) |
-| `backtrack` | fills valid words from a wordlist, ignoring clues | ~10% letters (structure-only) |
-| `llm` | the agent under evaluation | — |
-| `oracle` | copies the answer key | 100% (ceiling) |
+| `empty` | Leaves the grid blank. | 0% — the floor |
+| `backtrack` | Fits real words, but ignores the clues. | about 10% of letters |
+| `llm` | The agent under test. | — |
+| `oracle` | Copies the answer key. | 100% — the ceiling |
 
-The gap between `backtrack` and `llm` isolates how much clue understanding
-(not just grid-consistency search) the agent contributes.
+The distance between `backtrack` and `llm` is the part that clue understanding
+contributes. `backtrack` shows what pure grid search achieves on its own.
 
-**Puzzle set** — four hand-verified puzzles spanning difficulty: a 3×3 smoke
-test, two 5×5 minis (one with straightforward clues, one with trickier
-wordplay), and a 7×7 pinwheel. Every puzzle ships with an answer key and is
-validated by CI-style tests (block symmetry, numbering, clue coverage, key
-consistency).
+The puzzle set has four hand-checked puzzles: a 3×3 square, two 5×5 puzzles,
+and a 7×7 pinwheel. One 5×5 puzzle uses plain clues. The other uses wordplay.
+Every puzzle carries an answer key, and the tests check the numbering, the clue
+coverage, and the key.
 
-**Known limitations** — small N (results are indicative, not statistically
-tight); English-only; no themed/rebus puzzles; the eval trusts the answer key
-as the unique solution.
+The set is small, so read the numbers as an indication and not as proof. The
+puzzles are English only. There are no themed puzzles and no rebus squares. The
+harness also assumes that the answer key is the only correct solution.
 
-### Results (2026-08-10, via the deployed agent, 2 runs per puzzle)
+## Results
 
-`deepseek/deepseek-v4-flash-0731` (the default; LangGraph loop):
+These runs used `deepseek/deepseek-v4-flash-0731` on the deployed app, with two
+runs for each puzzle, on 10 August 2026.
 
-| puzzle | letters | words | solved | turns | tokens |
+| Puzzle | Letters | Words | Solved | Turns | Tokens |
 |---|---|---|---|---|---|
 | example_3x3 | 100% | 100% | 2/2 | 3.5 | 5.9k |
 | example_mini_5x5 | 100% | 100% | 2/2 | 3.5 | 15.1k |
 | example_5x5_b | 100% | 100% | 2/2 | 3.5 | 9.8k |
 | example_7x7 | 100% | 100% | 2/2 | 5.0 | 30.7k |
 
-After the prompt was trimmed for latency (see below), a single re-run of the
-same four puzzles still solved every one, in fewer turns: 2, 3, 2 and 2 turns,
-taking 18s, 57s, 123s and 85s. The 7×7 dropped from 5 turns to 2.
+The prompt was then shortened for speed. One further run of the same four
+puzzles solved all of them again, and used fewer turns: 2, 3, 2 and 2. Those
+runs took 18, 57, 123 and 85 seconds. The 7×7 puzzle fell from 5 turns to 2.
 
-At ~$0.014/M input and $0.028/M output, a full 4-puzzle eval run costs well
-under a cent. `anthropic/claude-sonnet-4.5` also scored 8/8 on the
-pre-LangGraph loop (3.5–5.5 turns, 6.4k–22.5k tokens) and was re-verified
-post-port on the 7×7 (solved, 6 turns) — the port did not regress scores.
+Input costs $0.014 for each million tokens, and output costs $0.028. A full
+run over the four puzzles therefore costs much less than one cent.
 
-For contrast, `openai/gpt-4o-mini` on the 3×3 (1 run, pre-port) scored 67%
-letters / 33% words — it answered SIX for "Half a score" and submitted despite
-nonsense crossings, which is exactly the failure mode the word-accuracy metric
-and the backtrack baseline are designed to expose.
+Two other models ran on the earlier version of the loop.
+`anthropic/claude-sonnet-4.5` solved all 8 of its runs. `openai/gpt-4o-mini`
+failed its one run on the 3×3 puzzle, with 67% of letters and 33% of words. It
+answered SIX for "Half a score", and it submitted the grid although the
+crossings made no words. That failure is the reason for the word accuracy
+metric and for the `backtrack` baseline.
 
 ## Tests
 
@@ -189,26 +224,30 @@ and the backtrack baseline are designed to expose.
 pytest
 ```
 
-Covers grid numbering, conflict detection, puzzle validation, metric scoring,
-and the API endpoints (oracle path). No API key needed.
+The suite has 54 tests and needs no API key. It covers the numbering, the
+conflict checks, the puzzle files, the metrics, the graph, and the API.
+The graph tests drive the agent with a scripted model, so the loop, the stop
+rules, and the token counts are all tested offline.
 
-## Deployment (Vercel)
+## Deployment
 
-Deployed at <https://nebius-xword.vercel.app> (`vercel deploy --prod`; pushes
-to `main` also auto-deploy). Notes:
+The app runs on Vercel at <https://nebius-xword.vercel.app>. A push to `main`
+starts a deployment. `vercel deploy --prod` also starts one.
 
-- `public/` is served statically; `vercel.json` rewrites the three `/api/*`
-  routes to the FastAPI function with the original path carried in a `__path`
-  query param (Vercel's Python runtime only sees the rewrite destination path;
-  middleware in `api/index.py` restores it). `maxDuration: 300` gives the
-  agent loop room.
-- **Auth is zero-config on Vercel**: the middleware picks up the request's
-  Vercel OIDC token and uses it for AI Gateway. Set `LLM_API_KEY` /
-  `LLM_MODEL` project env vars to override.
-- Because the public endpoint spends gateway tokens, `/api/solve` only accepts
-  models from the `ALLOWED_MODELS` list in `api/index.py` — currently the two
-  DeepSeek v4 Flash ids. Any gateway model still works locally through
-  `LLM_MODEL` or `--model`; the allowlist only guards the hosted demo.
+Vercel serves `public/` directly. `vercel.json` sends the five `/api/*` routes
+to the FastAPI function. Each rewrite carries the original path in a `__path`
+parameter, because the Python runtime sees only the destination path.
+Middleware in `api/index.py` puts the path back. `maxDuration` is 300 seconds,
+which gives the agent room to think.
+
+Authentication needs no setup. The middleware takes the Vercel OIDC token from
+the request and uses it for the AI Gateway. To use a different key or model,
+set the `LLM_API_KEY` and `LLM_MODEL` project variables.
+
+The public endpoints spend real tokens. `ALLOWED_MODELS` in `api/index.py`
+therefore limits them to the two DeepSeek v4 Flash names. This limit applies
+only to the hosted demo. On your own machine, `LLM_MODEL` and `--model` still
+accept any model the gateway offers.
 
 ## Puzzle format
 
@@ -222,19 +261,20 @@ to `main` also auto-deploy). Notes:
 }
 ```
 
-`#` is a block, `.` an open cell. Slot numbers derive from standard crossword
-numbering, so clue keys must match it (`solver.verify_puzzle` checks this).
-New puzzles can be constructed with `solver.fill_grid`, the wordlist-backed
-backtracking filler.
+`#` is a block. `.` is an open cell. The slot numbers come from the standard
+crossword rules, so the keys in `clues` must agree with them.
+`solver.verify_puzzle` checks this agreement for you. To build a new puzzle,
+use `solver.fill_grid`, the same filler the generator uses.
 
-## Roadmap
+## Next steps
 
-- [x] Wordlist-backed backtracking filler (baseline + puzzle construction)
-- [x] LangGraph port of the agent loop
-- [ ] Candidate-suggestion tool (`suggest(pattern)`) so the model can query the
-      wordlist for slots it can't answer from the clue alone
-- [ ] Top-k candidate lists per clue + deterministic beam-search assignment
-      (keeps the LLM out of the inner loop for big grids)
-- [ ] JSON tool-protocol fallback for models without native tool calling
-- [ ] Puzzle importers (.puz / NYT-style formats) to grow the eval set
-- [ ] Per-model eval comparison across gateway-hosted models
+- [x] Wordlist filler, for the baseline and for new grids
+- [x] LangGraph agent loop
+- [x] New puzzles, solved blind
+- [ ] A `suggest(pattern)` tool, so the model can ask the wordlist for
+      candidates when a clue defeats it
+- [ ] Candidate lists for each clue, and a beam search to choose between them.
+      This keeps the model out of the inner loop on large grids.
+- [ ] A JSON protocol, for models that cannot call tools
+- [ ] Importers for `.puz` files, to make the puzzle set larger
+- [ ] A comparison of the models the gateway offers
