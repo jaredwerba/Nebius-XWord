@@ -76,8 +76,13 @@ def home() -> FileResponse:
 
 
 @app.get("/nebius-logo.svg")
-def logo() -> FileResponse:  # Vercel serves public/ statically; this is for local dev
+def logo() -> FileResponse:  # Vercel serves public/ statically; these are for local dev
     return FileResponse(ROOT / "public" / "nebius-logo.svg", media_type="image/svg+xml")
+
+
+@app.get("/jared-werba-resume.pdf")
+def resume() -> FileResponse:
+    return FileResponse(ROOT / "public" / "jared-werba-resume.pdf", media_type="application/pdf")
 
 
 @app.get("/api/puzzles")

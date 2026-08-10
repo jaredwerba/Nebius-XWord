@@ -22,7 +22,13 @@
   header { display: flex; align-items: center; gap: 1rem; margin-bottom: .4rem; flex-wrap: wrap; }
   header img { height: 40px; display: block; }
   h1 { font-size: 1.6rem; font-weight: 800; margin: 0; letter-spacing: -.02em; }
-  .sub { color: var(--dim); margin: 0 0 1.5rem; }
+  .sub { color: var(--dim); margin: 0 0 .55rem; }
+  .byline { color: var(--dim); font-size: .9rem; margin: 0 0 1.5rem; display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+  .byline strong { color: var(--navy); font-weight: 700; }
+  .byline a { color: var(--purple); font-weight: 600; text-decoration: none; }
+  .byline a:hover { text-decoration: underline; }
+  .byline .chip { background: var(--lime); color: var(--ink); border-radius: 6px; padding: .1rem .5rem; }
+  .byline .sep { color: var(--line); }
   .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 1.25rem; }
 
   .controls { display: flex; gap: .6rem; flex-wrap: wrap; margin-bottom: 1.25rem; }
@@ -97,6 +103,13 @@
     <h1>XWord — AI crossword agent</h1>
   </header>
   <p class="sub">A LangGraph agent that solves crossword puzzles with DeepSeek V4 Flash, served through Vercel AI Gateway.</p>
+  <p class="byline">
+    <strong>Jared Werba</strong> <span class="sep">·</span> FDE Candidate
+    <span class="sep">·</span> August 10, 2026 <span class="sep">·</span>
+    <a href="mailto:werba@protonmail.com">werba@protonmail.com</a>
+    <span class="sep">·</span>
+    <a class="chip" href="/jared-werba-resume.pdf" target="_blank" rel="noopener">Résumé (PDF)</a>
+  </p>
 
   <div class="controls">
     <select id="puzzle"></select>

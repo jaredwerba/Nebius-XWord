@@ -1,6 +1,9 @@
 # Secrets
 .env
 
+# Personal documents — deployed with the site, kept out of version control
+public/jared-werba-resume.pdf
+
 # Python
 __pycache__/
 *.pyc
