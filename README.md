@@ -58,17 +58,37 @@ and it cannot become a broken grid.
 
 ## Models
 
-The agent speaks the OpenAI chat API. Two backends work, and you do not change
-any code to move between them.
+The agent speaks the OpenAI chat API. You select a backend with environment
+variables, and you do not change any code.
 
-| Backend | Environment variables | Default model |
-|---|---|---|
-| Vercel AI Gateway (default) | `LLM_API_KEY`, and optionally `LLM_MODEL` and `LLM_BASE_URL` | `deepseek/deepseek-v4-flash-0731` |
-| Nebius AI Studio (direct) | `NEBIUS_API_KEY`, and optionally `NEBIUS_MODEL` and `NEBIUS_BASE_URL` | `meta-llama/Meta-Llama-3.1-70B-Instruct` |
+| Backend | Environment variables | Default model | Status |
+|---|---|---|---|
+| Vercel AI Gateway | `LLM_API_KEY`, and optionally `LLM_MODEL` and `LLM_BASE_URL` | `deepseek/deepseek-v4-flash-0731` | In use. Every result below comes from it. |
+| Nebius AI Studio, direct | `NEBIUS_API_KEY`, and optionally `NEBIUS_MODEL` and `NEBIUS_BASE_URL` | `meta-llama/Meta-Llama-3.1-70B-Instruct` | Written, but not yet run. See the note. |
 
 The default is a dated DeepSeek checkpoint. A dated checkpoint keeps the
 evaluation numbers repeatable. The undated name,
 `deepseek/deepseek-v4-flash`, follows each new release of the weights.
+
+### A note on the direct Nebius path
+
+I had no Nebius API key while I built this, so no request has gone to Nebius
+AI Studio. The code path is complete, and the tests do not cover it. Please
+read it as a supported configuration, and not as a tested one.
+
+Nebius AI Studio serves the OpenAI chat API, so the same client should work.
+Two details need your attention before you trust it. First, check the model
+name against the live catalog. Nobody has verified that
+`meta-llama/Meta-Llama-3.1-70B-Instruct` is still available. Second, choose a
+model that can call tools. The agent needs tool calls, and a model without
+them fails immediately.
+
+With a key, the evaluation harness gives you the answer in a few minutes:
+
+```bash
+NEBIUS_API_KEY=... NEBIUS_MODEL=<a model that calls tools> \
+  python -m eval.run_eval --solver llm
+```
 
 On Vercel you do not need a key at all. The deployment sends its own OIDC
 token to the AI Gateway.

@@ -1,6 +1,6 @@
 """Solve one puzzle with the LLM agent and print the result.
 
-Usage (from the repo root, with NEBIUS_API_KEY set in .env):
+Usage (from the repo root, with a key in .env — see .env.example):
     PYTHONPATH=src python3 scripts/solve.py data/puzzles/example_mini_5x5.json
 """
 
