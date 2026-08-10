@@ -67,6 +67,34 @@ class SolveRequest(BaseModel):
     model: str | None = None
 
 
+class GenerateRequest(BaseModel):
+    model: str | None = None
+    template: str | None = None
+
+
+def puzzle_view(puzzle) -> dict:
+    """The solver's-eye view of a puzzle: layout and clues, never the answers."""
+    grid = puzzle.make_grid()
+    return {
+        "id": puzzle.id,
+        "title": puzzle.title,
+        "grid": puzzle.grid_rows,
+        "has_solution": puzzle.solution is not None,
+        "slots": [
+            {
+                "id": slot.id,
+                "number": slot.number,
+                "direction": slot.direction,
+                "row": slot.row,
+                "col": slot.col,
+                "length": slot.length,
+                "clue": slot.clue,
+            }
+            for slot in grid.slots.values()
+        ],
+    }
+
+
 @app.get("/")
 def home() -> FileResponse:
     return FileResponse(ROOT / "public" / "index.html")
@@ -106,26 +134,7 @@ def list_puzzles() -> list[dict]:
 
 @app.get("/api/puzzles/{puzzle_id}")
 def puzzle_detail(puzzle_id: str) -> dict:
-    puzzle = get_puzzle(puzzle_id)
-    grid = puzzle.make_grid()
-    return {
-        "id": puzzle.id,
-        "title": puzzle.title,
-        "grid": puzzle.grid_rows,
-        "has_solution": puzzle.solution is not None,
-        "slots": [
-            {
-                "id": slot.id,
-                "number": slot.number,
-                "direction": slot.direction,
-                "row": slot.row,
-                "col": slot.col,
-                "length": slot.length,
-                "clue": slot.clue,
-            }
-            for slot in grid.slots.values()
-        ],
-    }
+    return puzzle_view(get_puzzle(puzzle_id))
 
 
 def validate_solve_request(req: SolveRequest, puzzle) -> None:
@@ -211,8 +220,64 @@ def solve_stream(req: SolveRequest) -> StreamingResponse:
         except Exception as exc:  # surface config/provider errors into the log
             yield sse({"event": "error", "message": f"LLM solve failed: {exc}"})
 
+    return sse_response(events())
+
+
+def sse_response(generator) -> StreamingResponse:
     return StreamingResponse(
-        events(),
+        generator,
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+@app.post("/api/generate-solve")
+def generate_and_solve(req: GenerateRequest) -> StreamingResponse:
+    """Build a brand-new puzzle, then solve it blind, over one event stream.
+
+    The grid is filled by wordlist search, so every entry is a real word and
+    every crossing is consistent. The model writes the clues. The solver then
+    starts from an empty grid and sees only the layout and those clues — the
+    answer key is used solely to score the attempt at the end.
+    """
+    if req.model is not None and req.model not in ALLOWED_MODELS:
+        raise HTTPException(400, f"model must be one of {ALLOWED_MODELS}")
+
+    def sse(payload: dict) -> str:
+        return f"data: {json.dumps(payload)}\n\n"
+
+    def events():
+        try:
+            import random
+
+            from nebius_xword.agent import CrosswordAgent, build_chat_model  # deferred
+            from nebius_xword.generator import fill_random_template, to_puzzle, write_clues
+
+            yield sse({"event": "phase", "phase": "grid",
+                       "message": "searching the wordlist for a consistent grid…"})
+            name, grid = fill_random_template(rng=random.Random(), template=req.template)
+            yield sse({"event": "phase", "phase": "clues",
+                       "message": f"{name} grid filled — the model is writing clues "
+                                  "(this is the slow step, ~40-60s)…"})
+
+            model = build_chat_model(req.model)
+            title, clues = write_clues(model, grid)
+            puzzle = to_puzzle(name, grid, title, clues)
+            yield sse({"event": "puzzle", **puzzle_view(puzzle)})
+            yield sse({"event": "phase", "phase": "solve",
+                       "message": "solving blind — the agent sees the clues, never the answers…"})
+
+            agent = CrosswordAgent(model=req.model)
+            for event in agent.stream(puzzle):
+                if event["event"] == "result":
+                    result = event["result"]
+                    stats = {"solver": "llm", "model": result.model, "turns": result.turns,
+                             "tokens": result.total_tokens, "submitted": result.submitted}
+                    yield sse({"event": "done",
+                               **solve_payload(result.grid, puzzle, stats)})
+                else:
+                    yield sse(event)
+        except Exception as exc:  # surface generation/provider errors into the log
+            yield sse({"event": "error", "message": f"generate-and-solve failed: {exc}"})
+
+    return sse_response(events())

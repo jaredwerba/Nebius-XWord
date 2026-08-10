@@ -79,6 +79,23 @@ def resolve_llm_config(
     return model, api_key, base_url
 
 
+def build_chat_model(
+    model: str | None = None,
+    api_key: str | None = None,
+    base_url: str | None = None,
+):
+    """Build an unbound chat model against the resolved endpoint."""
+    from langchain_openai import ChatOpenAI  # deferred: heavy import
+
+    name, key, url = resolve_llm_config(model, api_key, base_url)
+    return ChatOpenAI(
+        model=name,
+        api_key=key,
+        base_url=url,
+        use_responses_api=False,  # pin the Chat Completions surface
+    )
+
+
 @dataclass
 class SolveResult:
     grid: Grid
@@ -105,18 +122,11 @@ class CrosswordAgent:
         chat_model=None,
     ):
         """``chat_model`` injects a pre-built LangChain chat model (tests)."""
-        self.model, key, url = resolve_llm_config(model, api_key, base_url)
+        self.model, _, _ = resolve_llm_config(model, api_key, base_url)
         if chat_model is not None:
             self._model = chat_model
         else:
-            from langchain_openai import ChatOpenAI  # deferred: heavy import
-
-            self._model = ChatOpenAI(
-                model=self.model,
-                api_key=key,
-                base_url=url,
-                use_responses_api=False,  # pin the Chat Completions surface
-            ).bind_tools(TOOL_SCHEMAS)
+            self._model = build_chat_model(model, api_key, base_url).bind_tools(TOOL_SCHEMAS)
         self.max_turns = max_turns
         self.verbose = verbose
 

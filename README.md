@@ -24,6 +24,7 @@ about grid state — only about answers.
 │   ├── tools.py          #   tool schemas + executor exposed to the LLM
 │   ├── graph.py          #   LangGraph StateGraph: agent + tools nodes, stops
 │   ├── agent.py          #   CrosswordAgent: model config + graph invocation
+│   ├── generator.py      #   fresh puzzles: wordlist fill + LLM-written clues
 │   └── solver.py         #   pattern matching, backtracking filler, validation
 ├── api/index.py          # FastAPI app (also the Vercel entry point)
 ├── public/index.html     # web UI: pick a puzzle, watch the agent solve it
@@ -83,6 +84,28 @@ pipeline without an API key.
 ```bash
 python -m eval.run_eval --solver llm --runs 3
 ```
+
+## Generating fresh puzzles
+
+The demo can build a puzzle that has never existed and then solve it blind.
+Work is split so each side does what it is reliable at:
+
+1. **The grid is filled by search, not by the model.** `generator.py` picks a
+   block template and runs the backtracking filler in `solver.py` over
+   `data/wordlist.txt` (~1.7k common words). Every entry is therefore a real
+   word and every crossing is consistent by construction — the model cannot
+   invent a broken puzzle. Typical fill: under 0.1s for a 5×5, ~1s for the 7×7.
+2. **The model writes the clues**, plus a title, in one JSON reply. Clues are
+   validated: any clue that contains its own answer is masked to `___` (which
+   is a legitimate fill-in-the-blank clue), and a retry is issued.
+3. **The solve is blind.** The agent gets a fresh, empty grid and the clues.
+   The answer key never enters its context; it is used afterwards, only to
+   score the attempt.
+
+Caveat worth stating plainly: the same model writes the clues and solves them.
+It cannot see the answers while solving, but its own phrasing may suit it
+better than a stranger's would. Treat generated-puzzle scores as a
+demonstration, and the fixed puzzle set below as the real measurement.
 
 ## Evaluation methodology
 

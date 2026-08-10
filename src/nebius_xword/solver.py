@@ -50,6 +50,35 @@ def fill_grid(
             rng.shuffle(pool)
     wordset = {w for pool in by_len.values() for w in pool}
 
+    # Index words by (length, position, letter) so a partly-filled pattern
+    # narrows to its candidates by set intersection instead of a full scan.
+    index: dict[int, dict[tuple[int, str], set[str]]] = {}
+    rank: dict[int, dict[str, int]] = {}
+    for length, pool in by_len.items():
+        buckets: dict[tuple[int, str], set[str]] = {}
+        for word in pool:
+            for position, letter in enumerate(word):
+                buckets.setdefault((position, letter), set()).add(word)
+        index[length] = buckets
+        rank[length] = {word: i for i, word in enumerate(pool)}  # preserves rng order
+
+    def candidates_for(pattern: str) -> list[str]:
+        length = len(pattern)
+        pool = by_len.get(length)
+        if pool is None:
+            return []
+        fixed = [(i, ch) for i, ch in enumerate(pattern) if ch != EMPTY]
+        if not fixed:
+            return [w for w in pool if w not in used]
+        sets = sorted((index[length].get(key, frozenset()) for key in fixed), key=len)
+        found = set(sets[0])
+        for other in sets[1:]:
+            found &= other
+            if not found:
+                break
+        found -= used
+        return sorted(found, key=rank[length].__getitem__)
+
     # Slots complete before we start (seeds) are accepted as-is.
     pre_filled = {s for s in grid.slots if EMPTY not in grid.slot_pattern(s)}
     used = {grid.slot_pattern(s) for s in pre_filled}
@@ -66,9 +95,7 @@ def fill_grid(
                 if slot_id not in pre_filled and pattern not in wordset:
                     return False
                 continue
-            cands = [
-                w for w in by_len.get(len(pattern), []) if w not in used and matches(pattern, w)
-            ]
+            cands = candidates_for(pattern)
             if best_cands is None or len(cands) < len(best_cands):
                 best_slot, best_cands = slot_id, cands
                 if not cands:

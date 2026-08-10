@@ -46,10 +46,18 @@
     display: inline-flex; align-items: center; background: var(--lime); color: var(--ink);
     border-radius: 10px; padding: .55rem .85rem; font-weight: 600;
   }
+  button.ghost {
+    background: var(--card); color: var(--purple); border: 1px solid var(--purple);
+    font-weight: 600; cursor: pointer;
+  }
+  button.ghost:hover { background: #F0EEFF; }
+  button.ghost:disabled { opacity: .55; cursor: wait; }
 
   .layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 380px); gap: 1.25rem; align-items: start; }
   @media (max-width: 840px) { .layout { grid-template-columns: 1fr; } }
 
+  #board-title { font-size: .95rem; font-weight: 700; margin: 0 0 .55rem; }
+  #board-title .fresh { background: var(--lime); border-radius: 6px; padding: .05rem .4rem; margin-right: .4rem; font-size: .78rem; }
   #board { display: grid; gap: 3px; background: var(--line); border: 2px solid var(--navy); border-radius: 8px; width: max-content; max-width: 100%; }
   .cell {
     width: 50px; height: 50px; background: var(--card); position: relative;
@@ -117,16 +125,14 @@
 
   <div class="controls">
     <select id="puzzle"></select>
-    <select id="solver">
-      <option value="llm">LLM agent</option>
-      <option value="oracle">Oracle (answer key demo)</option>
-    </select>
     <span class="model-tag">deepseek-v4-flash</span>
     <button class="primary" id="solve">Solve</button>
+    <button class="ghost" id="generate">✦ Generate a new puzzle, then solve it blind</button>
   </div>
 
   <div class="layout">
     <div>
+      <h2 id="board-title"></h2>
       <div id="board"></div>
       <div class="clues">
         <div><h2>Across</h2><ol id="across"></ol></div>
@@ -154,6 +160,15 @@
         model submits the grid, or when the turn limit is reached. A deterministic
         Python grid engine validates every letter, so the model is never trusted
         about grid state — only about answers.</p>
+      </div>
+      <div class="card">
+        <h3><span>Puzzle generation</span></h3>
+        <p>Press "Generate" and the demo makes a puzzle that did not exist
+        before. A backtracking search over a shipped wordlist fills the grid,
+        so every entry is a real word and every crossing agrees. The model then
+        writes the clues. The solver starts from an empty grid and receives the
+        clues only — it never sees the answers, so it must solve the puzzle the
+        way a person does. The answer key is used at the end, to score it.</p>
       </div>
       <div class="card">
         <h3><span>DeepSeek V4 Flash</span></h3>
@@ -260,10 +275,17 @@ function renderClues() {
   }
 }
 
-async function loadPuzzle(id) {
-  current = await api(`/api/puzzles/${id}`);
+function showPuzzle(puzzle, fresh) {
+  current = puzzle;
+  $("board-title").innerHTML = fresh
+    ? `<span class="fresh">NEW</span>${puzzle.title}`
+    : puzzle.title;
   renderBoard(current.grid, null);
   renderClues();
+}
+
+async function loadPuzzle(id) {
+  showPuzzle(await api(`/api/puzzles/${id}`), false);
   $("status").className = "";
   $("status").textContent = "Pick a puzzle and press Solve.";
 }
@@ -284,29 +306,41 @@ function logLine(cls, text) {
 }
 
 let t0 = performance.now();
+let solveT0 = null;
 let turnsDone = 0;
 let expectedTurns = 4;
+let priorTotal = 45;
 
-function startTimer() {
+function startTimer(prior) {
   t0 = performance.now();
+  solveT0 = null;
   turnsDone = 0;
-  const cells = current.grid.length * current.grid[0].length;
-  expectedTurns = cells <= 9 ? 3.5 : cells <= 25 ? 4 : 5.5;
+  priorTotal = prior;
   timerId = setInterval(() => {
     const s = (performance.now() - t0) / 1000;
     $("elapsed").textContent = s.toFixed(1) + "s";
-    let eta;
-    if (turnsDone === 0) {
-      eta = Math.max(expectedTurns * 12 - s, 0); // rough prior: ~12s per turn
-      $("eta").textContent = `~${Math.round(eta)}s left (estimating)`;
-    } else if (turnsDone >= expectedTurns) {
-      $("eta").textContent = "wrapping up…";
+    // Before the first model turn all we have is a prior; after that, project
+    // from the measured pace of the turns so far.
+    if (solveT0 && turnsDone > 0) {
+      if (turnsDone >= expectedTurns) {
+        $("eta").textContent = "wrapping up…";
+      } else {
+        const avg = (performance.now() - solveT0) / 1000 / turnsDone;
+        $("eta").textContent = `~${Math.round((expectedTurns - turnsDone) * avg)}s left (est.)`;
+      }
     } else {
-      const avg = s / turnsDone;
-      eta = (expectedTurns - turnsDone) * avg;
-      $("eta").textContent = `~${Math.round(eta)}s left (est.)`;
+      $("eta").textContent = `~${Math.max(Math.round(priorTotal - s), 0)}s left (estimating)`;
     }
   }, 100);
+}
+
+// Called when the solving phase actually begins, so generation time is not
+// mistaken for solving pace.
+function beginSolvePhase() {
+  solveT0 = performance.now();
+  turnsDone = 0;
+  const cells = current.grid.length * current.grid[0].length;
+  expectedTurns = cells <= 9 ? 3.5 : cells <= 25 ? 4 : 5.5;
 }
 
 function stopTimer(label) {
@@ -328,7 +362,15 @@ function shortResult(text) {
 
 function handleEvent(e) {
   switch (e.event) {
+    case "phase":
+      logLine("info", e.message);
+      break;
+    case "puzzle":
+      showPuzzle(e, true);
+      logLine("ok", `puzzle ready — "${e.title}" · ${e.slots.length} entries`);
+      break;
     case "start":
+      beginSolvePhase();
       logLine("info", `solver started · model ${e.model}`);
       break;
     case "llm":
@@ -373,16 +415,15 @@ function handleEvent(e) {
   }
 }
 
-async function solve() {
-  const btn = $("solve");
-  btn.disabled = true;
+async function runStream(url, body, { prior, status }) {
+  const buttons = [$("solve"), $("generate")];
+  buttons.forEach((b) => (b.disabled = true));
   $("log").innerHTML = "";
   $("status").className = "";
-  $("status").textContent = "Solving…";
-  startTimer();
+  $("status").textContent = status;
+  startTimer(prior);
   try {
-    const body = { puzzle_id: current.id, solver: $("solver").value };  // model: server default
-    const res = await fetch("/api/solve/stream", {
+    const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
@@ -411,9 +452,17 @@ async function solve() {
     $("status").textContent = err.message;
     logLine("err", err.message);
   } finally {
-    btn.disabled = false;
+    buttons.forEach((b) => (b.disabled = false));
   }
 }
+
+const solve = () =>
+  runStream("/api/solve/stream", { puzzle_id: current.id, solver: "llm" },
+            { prior: 45, status: "Solving…" });
+
+const generate = () =>
+  runStream("/api/generate-solve", {},
+            { prior: 130, status: "Building a new puzzle, then solving it blind…" });
 
 // The résumé PDF is not in version control, so deployments built from the
 // repo do not carry it. Hide the link rather than show a dead one.
@@ -433,6 +482,7 @@ async function init() {
   puzzles.forEach((p) => sel.add(new Option(p.title, p.id)));
   sel.onchange = () => loadPuzzle(sel.value);
   $("solve").onclick = solve;
+  $("generate").onclick = generate;
   if (puzzles.length) await loadPuzzle(puzzles[0].id);
 }
 init();
