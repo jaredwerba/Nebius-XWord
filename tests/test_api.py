@@ -49,12 +49,10 @@ def test_unknown_solver_rejected():
     assert res.status_code == 400
 
 
-def test_deepseek_default_in_allowlist():
-    from api.index import ALLOWED_MODELS
-    from nebius_xword.agent import GATEWAY_DEFAULT_MODEL
+def test_default_model_is_allowed():
+    from api.index import ALLOWED_MODELS, DEFAULT_MODEL
 
-    assert GATEWAY_DEFAULT_MODEL == "deepseek/deepseek-v4-flash-0731"
-    assert GATEWAY_DEFAULT_MODEL in ALLOWED_MODELS
+    assert DEFAULT_MODEL in ALLOWED_MODELS
 
 
 def test_stream_oracle_emits_sse_and_done():
@@ -117,7 +115,35 @@ def test_disallowed_model_rejected_without_network(model):
     assert res.status_code == 400
 
 
-def test_allowlist_is_deepseek_only():
-    from api.index import ALLOWED_MODELS
+def test_allowlist_is_exactly_the_two_model_sets():
+    from api.index import ALLOWED_MODELS, GATEWAY_MODELS, NEBIUS_MODELS
 
-    assert all(m.startswith("deepseek/") for m in ALLOWED_MODELS)
+    assert set(ALLOWED_MODELS) == NEBIUS_MODELS | GATEWAY_MODELS
+    assert not (NEBIUS_MODELS & GATEWAY_MODELS)  # a model belongs to one service
+
+
+def test_each_model_routes_to_its_own_service(monkeypatch):
+    """A Nebius id must reach Nebius, and a gateway id must not."""
+    from api.index import GATEWAY_MODELS, NEBIUS_MODELS, connection_for
+    from nebius_xword.agent import GATEWAY_BASE_URL, NEBIUS_BASE_URL
+
+    monkeypatch.setenv("NEBIUS_API_KEY", "nebius-key")
+    monkeypatch.setenv("VERCEL_OIDC_TOKEN", "gateway-token")
+    monkeypatch.delenv("LLM_API_KEY", raising=False)
+
+    for model in NEBIUS_MODELS:
+        conn = connection_for(model)
+        assert conn["base_url"] == NEBIUS_BASE_URL
+        assert conn["api_key"] == "nebius-key"
+
+    for model in GATEWAY_MODELS:
+        conn = connection_for(model)
+        assert conn["base_url"] == GATEWAY_BASE_URL
+        assert conn["api_key"] == "gateway-token"
+
+
+def test_nebius_base_url_has_no_trailing_slash():
+    """A trailing slash would make the client build /v1//chat/completions."""
+    from nebius_xword.agent import NEBIUS_BASE_URL
+
+    assert NEBIUS_BASE_URL == "https://api.tokenfactory.nebius.com/v1"

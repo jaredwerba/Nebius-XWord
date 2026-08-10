@@ -42,7 +42,9 @@ async def vercel_bridge(request: Request, call_next):
         request.scope["path"] = original
         request.scope["raw_path"] = original.encode()
     oidc = request.headers.get("x-vercel-oidc-token")
-    if oidc and not os.getenv("LLM_API_KEY") and not os.getenv("NEBIUS_API_KEY"):
+    if oidc and not os.getenv("LLM_API_KEY"):
+        # Always export it. A Nebius key must not starve the gateway models of
+        # their credential, because each request picks its own backend below.
         os.environ["VERCEL_OIDC_TOKEN"] = oidc
     return await call_next(request)
 
@@ -54,11 +56,35 @@ def get_puzzle(puzzle_id: str) -> Puzzle:
     return load_puzzle(path)
 
 
-# The public endpoint pays for gateway tokens, so only these models are allowed.
-ALLOWED_MODELS = [
+# The public endpoints spend real credit, so only these models may be selected.
+# The service that serves each model is implied by which set it belongs to.
+NEBIUS_MODELS = {
+    "Qwen/Qwen3-235B-A22B-Instruct-2507",
+    "deepseek-ai/DeepSeek-V4-Pro",
+}
+GATEWAY_MODELS = {
     "deepseek/deepseek-v4-flash-0731",
     "deepseek/deepseek-v4-flash",
-]
+}
+ALLOWED_MODELS = sorted(NEBIUS_MODELS | GATEWAY_MODELS)
+DEFAULT_MODEL = "deepseek-ai/DeepSeek-V4-Pro"
+
+
+def connection_for(model: str | None) -> dict:
+    """Pin a model to the service that serves it.
+
+    Both services speak the OpenAI chat API, so the only difference is the host
+    and the credential. Passing them explicitly keeps one request from
+    inheriting another service's settings from the environment.
+    """
+    from nebius_xword.agent import GATEWAY_BASE_URL, NEBIUS_BASE_URL  # deferred
+
+    model = model or DEFAULT_MODEL
+    if model in NEBIUS_MODELS:
+        return {"model": model, "base_url": NEBIUS_BASE_URL,
+                "api_key": os.getenv("NEBIUS_API_KEY")}
+    return {"model": model, "base_url": GATEWAY_BASE_URL,
+            "api_key": os.getenv("LLM_API_KEY") or os.getenv("VERCEL_OIDC_TOKEN")}
 
 
 class SolveRequest(BaseModel):
@@ -190,7 +216,7 @@ def solve(req: SolveRequest) -> dict:
         from nebius_xword.agent import CrosswordAgent  # deferred import: needs openai
 
         try:
-            result = CrosswordAgent(model=req.model).solve(puzzle)
+            result = CrosswordAgent(**connection_for(req.model)).solve(puzzle)
         except Exception as exc:  # surface config/provider errors to the UI
             raise HTTPException(502, f"LLM solve failed: {exc}") from exc
         grid = result.grid
@@ -224,7 +250,7 @@ def solve_stream(req: SolveRequest) -> StreamingResponse:
                 return
             from nebius_xword.agent import CrosswordAgent  # deferred import
 
-            agent = CrosswordAgent(model=req.model)
+            agent = CrosswordAgent(**connection_for(req.model))
             for event in agent.stream(puzzle):
                 if event["event"] == "result":
                     result = event["result"]
@@ -282,7 +308,7 @@ def generate(req: GenerateRequest) -> StreamingResponse:
                        "message": f"{name} grid filled with real words — the model is now "
                                   "writing the clues (the slow step, up to ~90s)…"})
 
-            title, clues = write_clues(build_chat_model(req.model), grid)
+            title, clues = write_clues(build_chat_model(**connection_for(req.model)), grid)
             puzzle = to_puzzle(name, grid, title, clues)
             yield sse({"event": "puzzle", **puzzle_view(puzzle),
                        "document": puzzle_document(puzzle)})

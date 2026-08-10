@@ -42,10 +42,7 @@
   }
   button.primary:hover { filter: brightness(1.08); }
   button.primary:disabled { opacity: .55; cursor: wait; }
-  .model-tag {
-    display: inline-flex; align-items: center; background: var(--lime); color: var(--ink);
-    border-radius: 10px; padding: .55rem .85rem; font-weight: 600;
-  }
+  #model { background: var(--lime); border-color: var(--lime); color: var(--ink); font-weight: 600; }
   button.ghost {
     background: var(--card); color: var(--purple); border: 1px solid var(--purple);
     font-weight: 600; cursor: pointer;
@@ -136,7 +133,7 @@
     <img src="/nebius-logo.svg" alt="Nebius logo">
     <h1>XWord — AI crossword agent</h1>
   </header>
-  <p class="sub">A LangGraph agent that solves crossword puzzles with DeepSeek V4 Flash, served through Vercel AI Gateway.</p>
+  <p class="sub">A LangGraph agent that solves crossword puzzles, running on Nebius Token Factory inference. Pick a model to compare it against Vercel AI Gateway.</p>
   <p class="byline">
     <strong>Jared Werba</strong> <span class="sep">·</span> FDE Candidate
     <span class="sep">·</span> August 10, 2026 <span class="sep">·</span>
@@ -147,7 +144,15 @@
 
   <div class="controls">
     <select id="puzzle"></select>
-    <span class="model-tag">deepseek-v4-flash</span>
+    <select id="model" title="Which model solves, and whose inference runs it">
+      <optgroup label="Nebius Token Factory">
+        <option value="deepseek-ai/DeepSeek-V4-Pro">DeepSeek V4 Pro</option>
+        <option value="Qwen/Qwen3-235B-A22B-Instruct-2507">Qwen3 235B (fastest)</option>
+      </optgroup>
+      <optgroup label="Vercel AI Gateway">
+        <option value="deepseek/deepseek-v4-flash-0731">DeepSeek V4 Flash</option>
+      </optgroup>
+    </select>
     <button class="primary" id="solve">Solve</button>
     <button class="ghost" id="generate">✦ Generate a new puzzle, then solve it blind</button>
   </div>
@@ -195,18 +200,18 @@
         way a person does. The answer key is used at the end, to score it.</p>
       </div>
       <div class="card">
-        <h3><span>DeepSeek V4 Flash</span></h3>
-        <p>DeepSeek V4 Flash is the default model. It supports tool calls and
-        reasoning. It is fast and very low-cost: one full puzzle costs less than
-        a tenth of a cent. In our evaluation it solved all sample puzzles with
-        100% accuracy.</p>
+        <h3><span>Nebius Token Factory</span></h3>
+        <p>Nebius serves the models the agent uses by default. It speaks the
+        OpenAI chat API, so the same client code reaches it with only a change of
+        host and key. DeepSeek V4 Pro on Nebius solves every sample puzzle. One
+        puzzle costs a fraction of a cent.</p>
       </div>
       <div class="card">
-        <h3><span>Vercel AI Gateway</span></h3>
-        <p>The AI Gateway gives one API for hundreds of models. This app sends
-        OpenAI-format requests to the gateway. The gateway routes each request to
-        the best provider. On Vercel, authentication uses the deployment's OIDC
-        token — no API key is needed.</p>
+        <h3><span>Two services, one agent</span></h3>
+        <p>The dropdown selects the model, and each model is pinned to the
+        service that runs it: Nebius Token Factory, or Vercel AI Gateway. Nothing
+        else changes between them. Use it to compare the same agent, on the same
+        puzzle, across two providers.</p>
       </div>
     </div>
   </section>
@@ -511,8 +516,11 @@ async function withRun(work, { prior, status }) {
   }
 }
 
+const chosenModel = () => $("model").value;
+
 const solve = () =>
-  withRun(() => consume("/api/solve/stream", { puzzle_id: current.id, solver: "llm" }),
+  withRun(() => consume("/api/solve/stream",
+                        { puzzle_id: current.id, solver: "llm", model: chosenModel() }),
           { prior: 45, status: "Solving…" });
 
 // Generation and solving are separate requests so neither has to fit both
@@ -520,12 +528,13 @@ const solve = () =>
 const generate = () =>
   withRun(async () => {
     generated = null;
-    await consume("/api/generate", {});
+    await consume("/api/generate", { model: chosenModel() });
     if (!generated) {
       throw new Error("the generator did not finish in time — press generate again");
     }
     logLine("info", "solving blind — the agent sees the clues, never the answers…");
-    await consume("/api/solve/stream", { puzzle: generated, solver: "llm" });
+    await consume("/api/solve/stream",
+                  { puzzle: generated, solver: "llm", model: chosenModel() });
   }, { prior: 130, status: "Building a new puzzle, then solving it blind…" });
 
 // The résumé PDF is not in version control, so deployments built from the

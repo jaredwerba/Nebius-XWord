@@ -28,8 +28,12 @@ from .tools import TOOL_SCHEMAS, ToolExecutor
 
 GATEWAY_BASE_URL = "https://ai-gateway.vercel.sh/v1"
 GATEWAY_DEFAULT_MODEL = "deepseek/deepseek-v4-flash-0731"
-NEBIUS_BASE_URL = "https://api.studio.nebius.com/v1/"
-NEBIUS_DEFAULT_MODEL = "meta-llama/Meta-Llama-3.1-70B-Instruct"
+# Nebius AI Studio is now called Nebius Token Factory. The old host still
+# answers, but this is the one the console and the docs use. No trailing slash:
+# a client that appends its own path would otherwise produce "/v1//chat/...",
+# which Nebius answers with a 404.
+NEBIUS_BASE_URL = "https://api.tokenfactory.nebius.com/v1"
+NEBIUS_DEFAULT_MODEL = "Qwen/Qwen3-235B-A22B-Instruct-2507"
 
 SYSTEM_PROMPT = """\
 You are Nebius-XWord, an expert crossword solver.

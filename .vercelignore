@@ -1,0 +1,10 @@
+# Keep local-only files out of the deployment bundle. Secrets belong in the
+# project's environment variables, not in an uploaded file.
+.env
+.env.local
+.venv
+__pycache__
+.pytest_cache
+.ruff_cache
+tests
+notebooks

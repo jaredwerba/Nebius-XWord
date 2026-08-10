@@ -1,12 +1,15 @@
 # Nebius-XWord
 
-Nebius-XWord is an AI agent that solves crossword puzzles.
+Nebius-XWord is an AI agent that solves crossword puzzles. It runs on **Nebius
+Token Factory** inference by default, and it can run the same agent on Vercel
+AI Gateway so you can compare the two.
 
 Try it here: **<https://nebius-xword.vercel.app>**
 
 Choose a puzzle and press Solve. The grid fills in while you watch, and a log
 shows each move the agent makes. Or press Generate. The agent then builds a
-new puzzle and solves it without the answers.
+new puzzle and solves it without the answers. The second dropdown chooses the
+model, and with it the service that runs the model.
 
 ## How it works
 
@@ -58,43 +61,54 @@ and it cannot become a broken grid.
 
 ## Models
 
-The agent speaks the OpenAI chat API. You select a backend with environment
-variables, and you do not change any code.
+The agent speaks the OpenAI chat API, so two services serve it without any
+change to the code. The dropdown on the page picks between them, and each
+model is pinned to the service that runs it.
 
-| Backend | Environment variables | Default model | Status |
-|---|---|---|---|
-| Vercel AI Gateway | `LLM_API_KEY`, and optionally `LLM_MODEL` and `LLM_BASE_URL` | `deepseek/deepseek-v4-flash-0731` | In use. Every result below comes from it. |
-| Nebius AI Studio, direct | `NEBIUS_API_KEY`, and optionally `NEBIUS_MODEL` and `NEBIUS_BASE_URL` | `meta-llama/Meta-Llama-3.1-70B-Instruct` | Written, but not yet run. See the note. |
+| Service | Models on the page | Key |
+|---|---|---|
+| **Nebius Token Factory** (default) | `deepseek-ai/DeepSeek-V4-Pro`, `Qwen/Qwen3-235B-A22B-Instruct-2507` | `NEBIUS_API_KEY` |
+| Vercel AI Gateway | `deepseek/deepseek-v4-flash-0731` | `LLM_API_KEY`, or the Vercel OIDC token |
 
-The default is a dated DeepSeek checkpoint. A dated checkpoint keeps the
-evaluation numbers repeatable. The undated name,
-`deepseek/deepseek-v4-flash`, follows each new release of the weights.
-
-### A note on the direct Nebius path
-
-I had no Nebius API key while I built this, so no request has gone to Nebius
-AI Studio. The code path is complete, and the tests do not cover it. Please
-read it as a supported configuration, and not as a tested one.
-
-Nebius AI Studio serves the OpenAI chat API, so the same client should work.
-Two details need your attention before you trust it. First, check the model
-name against the live catalog. Nobody has verified that
-`meta-llama/Meta-Llama-3.1-70B-Instruct` is still available. Second, choose a
-model that can call tools. The agent needs tool calls, and a model without
-them fails immediately.
-
-With a key, the evaluation harness gives you the answer in a few minutes:
-
-```bash
-NEBIUS_API_KEY=... NEBIUS_MODEL=<a model that calls tools> \
-  python -m eval.run_eval --solver llm
-```
-
-On Vercel you do not need a key at all. The deployment sends its own OIDC
-token to the AI Gateway.
+Nebius AI Studio is now called **Nebius Token Factory**; its host is
+`https://api.tokenfactory.nebius.com/v1`, and you create a key at
+<https://tokenfactory.nebius.com>. On Vercel the gateway needs no key at all,
+because the deployment sends its own OIDC token.
 
 Settings have this order of precedence: constructor arguments first, then the
-`LLM_*` variables, then the `NEBIUS_*` variables.
+`LLM_*` variables, then the `NEBIUS_*` variables. `api/index.py` passes the
+host and the key for every request, so one request never inherits the other
+service's settings.
+
+### Picking a model on Nebius
+
+**Check that a model supports tools before you use it.** The agent works
+entirely through tool calls, so a model without them fails at once. The
+catalog answers this directly:
+
+```bash
+curl -s -H "Authorization: Bearer $NEBIUS_API_KEY" \
+  "https://api.tokenfactory.nebius.com/v1/models?verbose=true" |
+  python3 -c "import json,sys; [print(m['id'], m.get('supported_features')) for m in json.load(sys.stdin)['data']]"
+```
+
+Of the 28 models in the catalog, 23 report `tools`. Note the trap:
+`deepseek-ai/DeepSeek-V4-Flash` — the same family as the gateway default —
+**does not**, so it cannot drive this agent on Nebius.
+
+Measured on the 3×3 puzzle, the difference between models is large:
+
+| Model | Result |
+|---|---|
+| `deepseek-ai/DeepSeek-V4-Pro` | Solved every puzzle. The default. |
+| `Qwen/Qwen3-235B-A22B-Instruct-2507` | Solved the 3×3 in 2.5s, but failed the harder puzzles. |
+| `nvidia/nemotron-3-super-120b-a12b` | Solved the two smaller puzzles only. |
+| `meta-llama/Llama-3.3-70B-Instruct` | Solved the 3×3, but took 7 turns to do it. |
+| `openai/gpt-oss-120b` | Failed the 3×3 at 33% of letters. |
+
+Both models on the page are kept for a reason: DeepSeek V4 Pro is the reliable
+one, and Qwen3 235B shows how fast a non-reasoning model answers when the
+puzzle is small.
 
 ## Install
 
@@ -157,9 +171,10 @@ scored. The key is never part of what the agent reads.
 
 ### Speed is the weak point
 
-DeepSeek v4 Flash thinks at length, and the time it takes varies. Clue writing
-has taken between 52 and 206 seconds. A blind solve of a new 5×5 grid takes
-about 25 to 150 seconds.
+Reasoning models think at length, and the time varies a great deal. On the
+Vercel gateway, clue writing has taken between 52 and 206 seconds, and a blind
+solve of a new 5×5 grid between 25 and 150 seconds. Nebius has been quicker in
+testing: solves of the fixed puzzles ran 6 to 40 seconds.
 
 Two measurements changed the design. The prompt used to tell the agent to call
 `get_state` first. That instruction wasted a full turn, because the first
@@ -214,8 +229,18 @@ harness also assumes that the answer key is the only correct solution.
 
 ## Results
 
-These runs used `deepseek/deepseek-v4-flash-0731` on the deployed app, with two
-runs for each puzzle, on 10 August 2026.
+**Nebius Token Factory, `deepseek-ai/DeepSeek-V4-Pro`** — two runs for each
+puzzle, 10 August 2026. It solved all 8 runs.
+
+| Puzzle | Letters | Words | Solved | Turns | Tokens | Time |
+|---|---|---|---|---|---|---|
+| example_3x3 | 100% | 100% | 2/2 | 2.0 | 3.2k | 5.9s |
+| example_mini_5x5 | 100% | 100% | 2/2 | 10.5 | 48.8k | 39.1s |
+| example_5x5_b | 100% | 100% | 2/2 | 5.0 | 14.7k | 19.0s |
+| example_7x7 | 100% | 100% | 2/2 | 5.5 | 24.9k | 39.5s |
+
+**Vercel AI Gateway, `deepseek/deepseek-v4-flash-0731`** — the same test, run
+earlier. It also solved all 8 runs.
 
 | Puzzle | Letters | Words | Solved | Turns | Tokens |
 |---|---|---|---|---|---|
@@ -224,12 +249,18 @@ runs for each puzzle, on 10 August 2026.
 | example_5x5_b | 100% | 100% | 2/2 | 3.5 | 9.8k |
 | example_7x7 | 100% | 100% | 2/2 | 5.0 | 30.7k |
 
+Both services solve every puzzle, so accuracy does not separate them here. The
+puzzle set is too easy to rank two strong models, which is a limit of the set
+and not a finding about the models.
+
 The prompt was then shortened for speed. One further run of the same four
 puzzles solved all of them again, and used fewer turns: 2, 3, 2 and 2. Those
 runs took 18, 57, 123 and 85 seconds. The 7×7 puzzle fell from 5 turns to 2.
 
-Input costs $0.014 for each million tokens, and output costs $0.028. A full
-run over the four puzzles therefore costs much less than one cent.
+Both services are cheap for this workload. DeepSeek V4 Pro on Nebius costs
+$1.75 for each million input tokens and $3.50 for output, so the eight runs
+above used roughly 180k tokens and cost about 40 cents. The gateway model is
+cheaper still, at $0.014 and $0.028 for each million.
 
 Two other models ran on the earlier version of the loop.
 `anthropic/claude-sonnet-4.5` solved all 8 of its runs. `openai/gpt-4o-mini`
@@ -260,14 +291,18 @@ parameter, because the Python runtime sees only the destination path.
 Middleware in `api/index.py` puts the path back. `maxDuration` is 300 seconds,
 which gives the agent room to think.
 
-Authentication needs no setup. The middleware takes the Vercel OIDC token from
-the request and uses it for the AI Gateway. To use a different key or model,
-set the `LLM_API_KEY` and `LLM_MODEL` project variables.
+The gateway needs no key: middleware takes the Vercel OIDC token from the
+request and uses it. Nebius needs one, so set `NEBIUS_API_KEY` as a project
+variable:
 
-The public endpoints spend real tokens. `ALLOWED_MODELS` in `api/index.py`
-therefore limits them to the two DeepSeek v4 Flash names. This limit applies
-only to the hosted demo. On your own machine, `LLM_MODEL` and `--model` still
-accept any model the gateway offers.
+```bash
+vercel env add NEBIUS_API_KEY production
+```
+
+The public endpoints spend real credit, so `ALLOWED_MODELS` in `api/index.py`
+limits them to the models in the dropdown. That limit guards only the hosted
+demo. On your own machine, `LLM_MODEL`, `NEBIUS_MODEL` and `--model` still
+accept any model either service offers.
 
 ## Puzzle format
 
