@@ -14,8 +14,10 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "src"))
 
+import json  # noqa: E402
+
 from fastapi import FastAPI, HTTPException, Request  # noqa: E402
-from fastapi.responses import FileResponse  # noqa: E402
+from fastapi.responses import FileResponse, StreamingResponse  # noqa: E402
 from pydantic import BaseModel  # noqa: E402
 
 from eval.metrics import score_grid  # noqa: E402
@@ -73,6 +75,11 @@ def home() -> FileResponse:
     return FileResponse(ROOT / "public" / "index.html")
 
 
+@app.get("/nebius-logo.svg")
+def logo() -> FileResponse:  # Vercel serves public/ statically; this is for local dev
+    return FileResponse(ROOT / "public" / "nebius-logo.svg", media_type="image/svg+xml")
+
+
 @app.get("/api/puzzles")
 def list_puzzles() -> list[dict]:
     out = []
@@ -114,20 +121,41 @@ def puzzle_detail(puzzle_id: str) -> dict:
     }
 
 
+def validate_solve_request(req: SolveRequest, puzzle) -> None:
+    if req.solver not in ("oracle", "llm"):
+        raise HTTPException(400, f"unknown solver: {req.solver}")
+    if req.solver == "oracle" and puzzle.solution is None:
+        raise HTTPException(400, "puzzle has no answer key")
+    if req.solver == "llm" and req.model is not None and req.model not in ALLOWED_MODELS:
+        raise HTTPException(400, f"model must be one of {ALLOWED_MODELS}")
+
+
+def oracle_grid(puzzle):
+    grid = puzzle.make_grid()
+    grid.set_rows(puzzle.solution)
+    return grid
+
+
+def solve_payload(grid, puzzle, stats: dict) -> dict:
+    return {
+        "grid": grid.render().split("\n"),
+        "slots": {slot_id: grid.slot_pattern(slot_id) for slot_id in grid.slots},
+        "complete": grid.is_complete(),
+        "score": score_grid(grid, puzzle.solution) if puzzle.solution else None,
+        "stats": stats,
+    }
+
+
 @app.post("/api/solve")
 def solve(req: SolveRequest) -> dict:
     puzzle = get_puzzle(req.puzzle_id)
+    validate_solve_request(req, puzzle)
     stats: dict = {"solver": req.solver}
     if req.solver == "oracle":
-        if puzzle.solution is None:
-            raise HTTPException(400, "puzzle has no answer key")
-        grid = puzzle.make_grid()
-        grid.set_rows(puzzle.solution)
-    elif req.solver == "llm":
+        grid = oracle_grid(puzzle)
+    else:
         from nebius_xword.agent import CrosswordAgent  # deferred import: needs openai
 
-        if req.model is not None and req.model not in ALLOWED_MODELS:
-            raise HTTPException(400, f"model must be one of {ALLOWED_MODELS}")
         try:
             result = CrosswordAgent(model=req.model).solve(puzzle)
         except Exception as exc:  # surface config/provider errors to the UI
@@ -139,13 +167,45 @@ def solve(req: SolveRequest) -> dict:
             tokens=result.total_tokens,
             submitted=result.submitted,
         )
-    else:
-        raise HTTPException(400, f"unknown solver: {req.solver}")
+    return solve_payload(grid, puzzle, stats)
 
-    return {
-        "grid": grid.render().split("\n"),
-        "slots": {slot_id: grid.slot_pattern(slot_id) for slot_id in grid.slots},
-        "complete": grid.is_complete(),
-        "score": score_grid(grid, puzzle.solution) if puzzle.solution else None,
-        "stats": stats,
-    }
+
+@app.post("/api/solve/stream")
+def solve_stream(req: SolveRequest) -> StreamingResponse:
+    """Server-sent events: progress log lines while the agent solves."""
+    puzzle = get_puzzle(req.puzzle_id)
+    validate_solve_request(req, puzzle)
+
+    def sse(payload: dict) -> str:
+        return f"data: {json.dumps(payload)}\n\n"
+
+    def events():
+        try:
+            if req.solver == "oracle":
+                yield sse({"event": "start", "model": "oracle", "puzzle": puzzle.id})
+                grid = oracle_grid(puzzle)
+                yield sse({"event": "tool_result", "tool": "oracle",
+                           "result": "grid filled from the answer key"})
+                yield sse({"event": "done",
+                           **solve_payload(grid, puzzle, {"solver": "oracle"})})
+                return
+            from nebius_xword.agent import CrosswordAgent  # deferred import
+
+            agent = CrosswordAgent(model=req.model)
+            for event in agent.stream(puzzle):
+                if event["event"] == "result":
+                    result = event["result"]
+                    stats = {"solver": "llm", "model": result.model, "turns": result.turns,
+                             "tokens": result.total_tokens, "submitted": result.submitted}
+                    yield sse({"event": "done",
+                               **solve_payload(result.grid, puzzle, stats)})
+                else:
+                    yield sse(event)
+        except Exception as exc:  # surface config/provider errors into the log
+            yield sse({"event": "error", "message": f"LLM solve failed: {exc}"})
+
+    return StreamingResponse(
+        events(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )

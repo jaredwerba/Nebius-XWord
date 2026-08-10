@@ -122,6 +122,19 @@ class CrosswordAgent:
 
     def solve(self, puzzle: Puzzle) -> SolveResult:
         """Run the graph until the model submits, stops, or turns run out."""
+        result = None
+        for event in self.stream(puzzle):
+            if event["event"] == "result":
+                result = event["result"]
+        return result
+
+    def stream(self, puzzle: Puzzle):
+        """Yield progress events while solving; the last event carries the result.
+
+        Events: {"event": "start"}, {"event": "llm", "turn"}, {"event":
+        "tool_call", "turn", "tool", "args"}, {"event": "tool_result", "tool",
+        "result"}, and finally {"event": "result", "result": SolveResult}.
+        """
         executor = ToolExecutor(puzzle)
         graph = build_solver_graph(
             self._model, executor, max_turns=self.max_turns, verbose=self.verbose
@@ -135,25 +148,49 @@ class CrosswordAgent:
             ],
             "turns": 0,
         }
+        yield {"event": "start", "model": self.model, "puzzle": puzzle.id}
+
+        turns = 0
+        ai_messages: list[AIMessage] = []
         try:
-            final = graph.invoke(init, config={"recursion_limit": 2 * self.max_turns + 4})
-            turns = final["turns"]
-            messages = final["messages"]
+            for update in graph.stream(
+                init,
+                config={"recursion_limit": 2 * self.max_turns + 4},
+                stream_mode="updates",
+            ):
+                if "agent" in update:
+                    turns = update["agent"]["turns"]
+                    message = update["agent"]["messages"][-1]
+                    ai_messages.append(message)
+                    yield {"event": "llm", "turn": turns}
+                    for call in message.tool_calls:
+                        yield {
+                            "event": "tool_call",
+                            "turn": turns,
+                            "tool": call["name"],
+                            "args": call["args"],
+                        }
+                elif "tools" in update:
+                    for msg in update["tools"]["messages"]:
+                        yield {"event": "tool_result", "tool": msg.name, "result": msg.content}
         except GraphRecursionError:  # backstop; the turns counter normally stops first
-            turns, messages = self.max_turns, []
+            turns = self.max_turns
 
         prompt_tokens = completion_tokens = 0
-        for message in messages:
+        for message in ai_messages:
             usage = getattr(message, "usage_metadata", None)
-            if isinstance(message, AIMessage) and usage:
+            if usage:
                 prompt_tokens += usage.get("input_tokens", 0) or 0
                 completion_tokens += usage.get("output_tokens", 0) or 0
 
-        return SolveResult(
-            grid=executor.grid,
-            turns=turns,
-            prompt_tokens=prompt_tokens,
-            completion_tokens=completion_tokens,
-            submitted=executor.submitted,
-            model=self.model,
-        )
+        yield {
+            "event": "result",
+            "result": SolveResult(
+                grid=executor.grid,
+                turns=turns,
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                submitted=executor.submitted,
+                model=self.model,
+            ),
+        }

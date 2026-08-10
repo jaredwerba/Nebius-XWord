@@ -127,6 +127,22 @@ def test_tool_error_keeps_loop_alive(puzzle):
     assert executor.submitted is True  # loop survived the error and continued
 
 
+def test_stream_yields_progress_events_and_result(puzzle):
+    fake = GenericFakeChatModel(messages=iter(SOLVE_3X3_SCRIPT))
+    events = list(CrosswordAgent(chat_model=fake).stream(puzzle))
+    kinds = [e["event"] for e in events]
+    assert kinds[0] == "start"
+    assert kinds[-1] == "result"
+    assert kinds.count("llm") == 2
+    assert kinds.count("tool_call") == 7
+    assert kinds.count("tool_result") == 7
+    first_call = next(e for e in events if e["event"] == "tool_call")
+    assert first_call["tool"] == "fill_slot" and first_call["args"]["slot"] == "1A"
+    result = events[-1]["result"]
+    assert result.submitted is True and result.turns == 2
+    assert result.total_tokens == 240
+
+
 def test_parallel_calls_with_submit_all_execute(puzzle):
     script = [
         ai_turn(

@@ -3,53 +3,104 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Nebius-XWord</title>
+<title>Nebius-XWord — AI crossword agent</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg: #101418; --panel: #1a2027; --line: #2c3540;
-    --text: #e6ebf0; --dim: #8b98a5; --accent: #4cc38a; --bad: #e5695e;
+    --lime: #E0FF4F; --purple: #614EFA; --navy: #052B42; --ink: #001A2B;
+    --bg: #F3F4F5; --card: #FFFFFF; --line: #D9DEE2; --soft: #EBEDF0;
+    --dim: #5B7285; --bad: #D64550;
   }
   * { box-sizing: border-box; }
   body {
-    margin: 0; padding: 2rem 1rem; background: var(--bg); color: var(--text);
-    font: 15px/1.5 -apple-system, "Segoe UI", Roboto, sans-serif;
-    display: flex; justify-content: center;
+    margin: 0; background: var(--bg); color: var(--navy);
+    font: 15px/1.55 "Inter", -apple-system, "Segoe UI", sans-serif;
   }
-  main { max-width: 860px; width: 100%; }
-  h1 { font-size: 1.4rem; margin: 0 0 .25rem; }
-  h1 span { color: var(--accent); }
-  .sub { color: var(--dim); margin: 0 0 1.25rem; }
+  main { max-width: 980px; margin: 0 auto; padding: 2.5rem 1.25rem 4rem; }
+  header { display: flex; align-items: center; gap: 1rem; margin-bottom: .4rem; flex-wrap: wrap; }
+  header img { height: 40px; display: block; }
+  h1 { font-size: 1.6rem; font-weight: 800; margin: 0; letter-spacing: -.02em; }
+  .sub { color: var(--dim); margin: 0 0 1.5rem; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 1.25rem; }
+
   .controls { display: flex; gap: .6rem; flex-wrap: wrap; margin-bottom: 1.25rem; }
   select, button {
-    background: var(--panel); color: var(--text); border: 1px solid var(--line);
-    border-radius: 8px; padding: .5rem .8rem; font-size: .95rem;
+    background: var(--card); color: var(--navy); border: 1px solid var(--line);
+    border-radius: 10px; padding: .55rem .85rem; font: inherit; font-weight: 500;
   }
-  button.primary { background: var(--accent); border-color: var(--accent); color: #08130d; font-weight: 600; cursor: pointer; }
-  button.primary:disabled { opacity: .5; cursor: wait; }
-  .layout { display: flex; gap: 2rem; flex-wrap: wrap; align-items: flex-start; }
-  #board { display: grid; gap: 2px; background: var(--line); border: 2px solid var(--line); border-radius: 6px; }
+  button.primary {
+    background: var(--purple); border-color: var(--purple); color: #fff;
+    font-weight: 700; cursor: pointer; padding: .55rem 1.5rem;
+  }
+  button.primary:hover { filter: brightness(1.08); }
+  button.primary:disabled { opacity: .55; cursor: wait; }
+
+  .layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 380px); gap: 1.25rem; align-items: start; }
+  @media (max-width: 840px) { .layout { grid-template-columns: 1fr; } }
+
+  #board { display: grid; gap: 3px; background: var(--line); border: 2px solid var(--navy); border-radius: 8px; width: max-content; max-width: 100%; }
   .cell {
-    width: 52px; height: 52px; background: var(--panel); position: relative;
+    width: 50px; height: 50px; background: var(--card); position: relative;
     display: flex; align-items: center; justify-content: center;
-    font-size: 1.5rem; font-weight: 600; text-transform: uppercase;
+    font-size: 1.45rem; font-weight: 700; text-transform: uppercase;
   }
-  .cell.block { background: #060a0d; }
-  .cell .num { position: absolute; top: 2px; left: 4px; font-size: .58rem; font-weight: 400; color: var(--dim); }
-  .cell.filled { color: var(--accent); }
-  .clues { flex: 1; min-width: 240px; display: flex; gap: 2rem; }
-  .clues h2 { font-size: .8rem; letter-spacing: .1em; text-transform: uppercase; color: var(--dim); margin: 0 0 .4rem; }
-  .clues ol { list-style: none; margin: 0 0 1rem; padding: 0; }
-  .clues li { margin-bottom: .35rem; }
-  .clues b { color: var(--accent); font-weight: 600; margin-right: .35rem; }
-  #status { margin-top: 1.25rem; padding: .75rem 1rem; border: 1px solid var(--line); border-radius: 8px; color: var(--dim); min-height: 1.5rem; }
-  #status.ok { border-color: var(--accent); color: var(--text); }
+  .cell.block { background: var(--navy); }
+  .cell .num { position: absolute; top: 2px; left: 5px; font-size: .58rem; font-weight: 500; color: var(--dim); }
+  .cell.filled { background: var(--lime); color: var(--ink); }
+
+  .clues { display: flex; gap: 2rem; margin-top: 1.1rem; flex-wrap: wrap; }
+  .clues h2 { font-size: .74rem; letter-spacing: .12em; text-transform: uppercase; color: var(--dim); margin: 0 0 .4rem; }
+  .clues ol { list-style: none; margin: 0; padding: 0; font-size: .92rem; }
+  .clues li { margin-bottom: .3rem; }
+  .clues b { color: var(--purple); margin-right: .35rem; }
+  .len { color: var(--dim); }
+
+  .timer { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: .6rem; font-variant-numeric: tabular-nums; }
+  .timer .elapsed { font-size: 1.35rem; font-weight: 800; }
+  .timer .eta { color: var(--dim); font-size: .9rem; }
+  #log {
+    background: var(--ink); color: #DDE9F2; border-radius: 10px; padding: .85rem 1rem;
+    font: 12.5px/1.7 ui-monospace, "SF Mono", Menlo, monospace;
+    height: 340px; overflow-y: auto; white-space: pre-wrap; word-break: break-word;
+  }
+  #log .t { color: #7E96A8; }
+  #log .call { color: var(--lime); }
+  #log .ok { color: #8BE9C3; }
+  #log .err { color: #FF8A93; }
+  #log .info { color: #A9BFD0; }
+
+  #status { margin-top: 1.25rem; padding: .8rem 1.1rem; border: 1px solid var(--line); border-radius: 10px; color: var(--dim); background: var(--card); }
+  #status.ok { border-color: var(--purple); color: var(--navy); font-weight: 600; }
+  #status.ok::before { content: ""; display: inline-block; width: .65rem; height: .65rem; border-radius: 50%; background: var(--lime); border: 2px solid var(--navy); margin-right: .5rem; vertical-align: baseline; }
   #status.err { border-color: var(--bad); color: var(--bad); }
+
+  section { margin-top: 3rem; }
+  section > h2 { font-size: 1.25rem; font-weight: 800; letter-spacing: -.01em; margin: 0 0 1rem; }
+  .tech { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem; }
+  .tech .card h3 { margin: 0 0 .45rem; font-size: 1rem; }
+  .tech .card h3 span { background: var(--lime); border-radius: 6px; padding: .1rem .45rem; }
+  .tech .card p { margin: 0; color: var(--navy); font-size: .93rem; }
+
+  .reqs { display: flex; flex-direction: column; gap: 1rem; }
+  .reqs .card { border-left: 5px solid var(--purple); }
+  .reqs h3 { margin: 0 0 .45rem; font-size: 1rem; }
+  .reqs p { margin: 0; font-size: .95rem; }
+  .reqs a { color: var(--purple); font-weight: 600; text-decoration: none; }
+  .reqs a:hover { text-decoration: underline; }
+
+  footer { margin-top: 3rem; padding-top: 1.25rem; border-top: 1px solid var(--line); color: var(--dim); font-size: .84rem; }
+  footer a { color: var(--purple); text-decoration: none; }
 </style>
 </head>
 <body>
 <main>
-  <h1>Nebius-<span>XWord</span></h1>
-  <p class="sub">An LLM agent that solves crossword puzzles through a verified tool loop.</p>
+  <header>
+    <img src="/nebius-logo.svg" alt="Nebius logo">
+    <h1>XWord — AI crossword agent</h1>
+  </header>
+  <p class="sub">A LangGraph agent that solves crossword puzzles with DeepSeek V4 Flash, served through Vercel AI Gateway.</p>
 
   <div class="controls">
     <select id="puzzle"></select>
@@ -67,19 +118,101 @@
   </div>
 
   <div class="layout">
-    <div id="board"></div>
-    <div class="clues">
-      <div><h2>Across</h2><ol id="across"></ol></div>
-      <div><h2>Down</h2><ol id="down"></ol></div>
+    <div>
+      <div id="board"></div>
+      <div class="clues">
+        <div><h2>Across</h2><ol id="across"></ol></div>
+        <div><h2>Down</h2><ol id="down"></ol></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="timer">
+        <span class="elapsed" id="elapsed">0.0s</span>
+        <span class="eta" id="eta">ready</span>
+      </div>
+      <div id="log"><span class="info">The agent's moves appear here when you press Solve.</span></div>
     </div>
   </div>
 
   <div id="status">Pick a puzzle and press Solve.</div>
+
+  <section>
+    <h2>Technology</h2>
+    <div class="tech">
+      <div class="card">
+        <h3><span>LangGraph</span></h3>
+        <p>LangGraph runs the agent loop as a small graph. One node calls the model.
+        One node applies the model's moves to the grid. The graph stops when the
+        model submits the grid, or when the turn limit is reached. A deterministic
+        Python grid engine validates every letter, so the model is never trusted
+        about grid state — only about answers.</p>
+      </div>
+      <div class="card">
+        <h3><span>DeepSeek V4 Flash</span></h3>
+        <p>DeepSeek V4 Flash is the default model. It supports tool calls and
+        reasoning. It is fast and very low-cost: one full puzzle costs less than
+        a tenth of a cent. In our evaluation it solved all sample puzzles with
+        100% accuracy.</p>
+      </div>
+      <div class="card">
+        <h3><span>Vercel AI Gateway</span></h3>
+        <p>The AI Gateway gives one API for hundreds of models. This app sends
+        OpenAI-format requests to the gateway. The gateway routes each request to
+        the best provider. On Vercel, authentication uses the deployment's OIDC
+        token — no API key is needed.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>The assignment, and how this demo answers it</h2>
+    <div class="reqs">
+      <div class="card">
+        <h3>Build an AI agent capable of solving crossword puzzles.</h3>
+        <p>We gave a language model four tools: <code>get_state</code>,
+        <code>fill_slot</code>, <code>clear_slot</code>, and <code>submit</code>.
+        The model reads the clues and proposes answers. The grid engine checks
+        every letter and rejects answers that break crossing words. The model sees
+        each rejection and corrects itself. The loop ends when the model submits a
+        complete, consistent grid.</p>
+      </div>
+      <div class="card">
+        <h3>A working implementation of the agent.</h3>
+        <p>This page is the working agent. Select a puzzle, press Solve, and watch
+        the log. The agent solves all four sample puzzles with 100% accuracy. You
+        can also run it locally from the command line — the README shows how.</p>
+      </div>
+      <div class="card">
+        <h3>A proposed evaluation methodology for measuring the quality of its solutions.</h3>
+        <p>We measure three things: letter accuracy, word accuracy, and solved
+        rate. We repeat each run, because model output varies. Baselines bracket
+        the score: an empty grid scores 0%, the answer key scores 100%, and a
+        wordlist filler that ignores clues scores about 10%. The gap between that
+        filler and the agent isolates real clue understanding. We also record
+        turns and token cost per solve.</p>
+      </div>
+      <div class="card">
+        <h3>A GitHub repository containing the source code and clear instructions for running the project.</h3>
+        <p>The code is public at
+        <a href="https://github.com/jaredwerba/Nebius-XWord">github.com/jaredwerba/Nebius-XWord</a>.
+        The README shows setup in four commands. The tests run without an API key.
+        Pushes to <code>main</code> deploy this page automatically.</p>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    Unofficial demo by Jared Werba for the Nebius Forward Deployed Engineer
+    assignment. Not an official Nebius product — the Nebius name and logo belong
+    to Nebius. Source on
+    <a href="https://github.com/jaredwerba/Nebius-XWord">GitHub</a>.
+  </footer>
 </main>
 
 <script>
 const $ = (id) => document.getElementById(id);
 let current = null;
+let timerId = null;
 
 async function api(path, opts) {
   const res = await fetch(path, opts);
@@ -95,16 +228,14 @@ function renderBoard(rows, letters) {
     numbers[key] = Math.min(numbers[key] ?? Infinity, slot.number);
   }
   const board = $("board");
-  board.style.gridTemplateColumns = `repeat(${rows[0].length}, 52px)`;
+  board.style.gridTemplateColumns = `repeat(${rows[0].length}, 50px)`;
   board.innerHTML = "";
   rows.forEach((row, r) => {
     [...row].forEach((ch, c) => {
       const cell = document.createElement("div");
       cell.className = "cell" + (ch === "#" ? " block" : "");
       const num = numbers[r + "," + c];
-      if (ch !== "#" && num !== undefined) {
-        cell.innerHTML = `<span class="num">${num}</span>`;
-      }
+      if (ch !== "#" && num !== undefined) cell.innerHTML = `<span class="num">${num}</span>`;
       const letter = letters ? letters[r][c] : ch;
       if (ch !== "#" && letter !== "." && letter !== "#") {
         cell.classList.add("filled");
@@ -121,7 +252,7 @@ function renderClues() {
     list.innerHTML = "";
     current.slots.filter((s) => s.direction === dir).forEach((s) => {
       const li = document.createElement("li");
-      li.innerHTML = `<b>${s.number}</b>${s.clue} <span style="color:var(--dim)">(${s.length})</span>`;
+      li.innerHTML = `<b>${s.number}</b>${s.clue} <span class="len">(${s.length})</span>`;
       list.appendChild(li);
     });
   }
@@ -135,32 +266,148 @@ async function loadPuzzle(id) {
   $("status").textContent = "Pick a puzzle and press Solve.";
 }
 
+// ---------------------------------------------------------------- log + timer
+
+function logLine(cls, text) {
+  const log = $("log");
+  const line = document.createElement("div");
+  const t = ((performance.now() - t0) / 1000).toFixed(1).padStart(5);
+  line.innerHTML = `<span class="t">${t}s</span> `;
+  const span = document.createElement("span");
+  span.className = cls;
+  span.textContent = text;
+  line.appendChild(span);
+  log.appendChild(line);
+  log.scrollTop = log.scrollHeight;
+}
+
+let t0 = performance.now();
+let turnsDone = 0;
+let expectedTurns = 4;
+
+function startTimer() {
+  t0 = performance.now();
+  turnsDone = 0;
+  const cells = current.grid.length * current.grid[0].length;
+  expectedTurns = cells <= 9 ? 3.5 : cells <= 25 ? 4 : 5.5;
+  timerId = setInterval(() => {
+    const s = (performance.now() - t0) / 1000;
+    $("elapsed").textContent = s.toFixed(1) + "s";
+    let eta;
+    if (turnsDone === 0) {
+      eta = Math.max(expectedTurns * 12 - s, 0); // rough prior: ~12s per turn
+      $("eta").textContent = `~${Math.round(eta)}s left (estimating)`;
+    } else if (turnsDone >= expectedTurns) {
+      $("eta").textContent = "wrapping up…";
+    } else {
+      const avg = s / turnsDone;
+      eta = (expectedTurns - turnsDone) * avg;
+      $("eta").textContent = `~${Math.round(eta)}s left (est.)`;
+    }
+  }, 100);
+}
+
+function stopTimer(label) {
+  clearInterval(timerId);
+  $("eta").textContent = label;
+}
+
+function shortResult(text) {
+  try {
+    const r = JSON.parse(text);
+    if (r.error) return { cls: "err", text: "error: " + r.error };
+    if (r.conflicts) return { cls: "err", text: "rejected — " + r.conflicts.join("; ") };
+    if (r.slots) return { cls: "ok", text: `read grid state (${r.slots.length} slots)` };
+    if ("complete" in r) return { cls: "ok", text: "submitted — grid " + (r.complete ? "complete" : "INCOMPLETE") };
+    if (r.pattern) return { cls: "ok", text: "ok — pattern " + r.pattern };
+    return { cls: "ok", text: "ok" };
+  } catch { return { cls: "info", text: String(text).slice(0, 120) }; }
+}
+
+function handleEvent(e) {
+  switch (e.event) {
+    case "start":
+      logLine("info", `solver started · model ${e.model}`);
+      break;
+    case "llm":
+      turnsDone = e.turn;
+      logLine("info", `turn ${e.turn} — model replied`);
+      break;
+    case "tool_call": {
+      const args = e.tool === "fill_slot" ? `${e.args.slot} = ${String(e.args.word || "").toUpperCase()}`
+        : Object.keys(e.args || {}).length ? JSON.stringify(e.args) : "";
+      logLine("call", `→ ${e.tool} ${args}`);
+      break;
+    }
+    case "tool_result": {
+      const r = shortResult(e.result);
+      logLine(r.cls, `  ${r.text}`);
+      break;
+    }
+    case "error":
+      logLine("err", e.message);
+      stopTimer("failed");
+      $("status").className = "err";
+      $("status").textContent = e.message;
+      break;
+    case "done": {
+      renderBoard(current.grid, e.grid);
+      const secs = ((performance.now() - t0) / 1000).toFixed(1);
+      stopTimer(`finished in ${secs}s`);
+      const parts = [];
+      if (e.score) {
+        parts.push(`letters ${(e.score.letter_accuracy * 100).toFixed(0)}%`);
+        parts.push(`words ${(e.score.word_accuracy * 100).toFixed(0)}%`);
+        parts.push(e.score.solved ? "SOLVED ✓" : "not fully solved");
+      }
+      if (e.stats.model) parts.push(`model ${e.stats.model}`);
+      if (e.stats.turns) parts.push(`${e.stats.turns} turns · ${e.stats.tokens} tokens`);
+      parts.push(`${secs}s`);
+      logLine(e.score && e.score.solved ? "ok" : "info", "done — " + parts.join(" · "));
+      $("status").className = "ok";
+      $("status").textContent = parts.join(" · ");
+      break;
+    }
+  }
+}
+
 async function solve() {
   const btn = $("solve");
   btn.disabled = true;
+  $("log").innerHTML = "";
   $("status").className = "";
-  $("status").textContent = "Solving… (the LLM agent can take a minute)";
+  $("status").textContent = "Solving…";
+  startTimer();
   try {
     const body = { puzzle_id: current.id, solver: $("solver").value, model: $("model").value };
-    const res = await api("/api/solve", {
+    const res = await fetch("/api/solve/stream", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
-    renderBoard(current.grid, res.grid);
-    const parts = [];
-    if (res.score) {
-      parts.push(`letters ${(res.score.letter_accuracy * 100).toFixed(0)}%`);
-      parts.push(`words ${(res.score.word_accuracy * 100).toFixed(0)}%`);
-      parts.push(res.score.solved ? "SOLVED ✓" : "not fully solved");
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || res.statusText);
     }
-    if (res.stats.model) parts.push(`model ${res.stats.model}`);
-    if (res.stats.turns) parts.push(`${res.stats.turns} turns, ${res.stats.tokens} tokens`);
-    $("status").className = "ok";
-    $("status").textContent = parts.join(" · ") || "Done.";
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const chunks = buffer.split("\n\n");
+      buffer = chunks.pop();
+      for (const chunk of chunks) {
+        const line = chunk.split("\n").find((l) => l.startsWith("data: "));
+        if (line) handleEvent(JSON.parse(line.slice(6)));
+      }
+    }
   } catch (err) {
+    stopTimer("failed");
     $("status").className = "err";
     $("status").textContent = err.message;
+    logLine("err", err.message);
   } finally {
     btn.disabled = false;
   }
@@ -169,7 +416,7 @@ async function solve() {
 async function init() {
   const puzzles = await api("/api/puzzles");
   const sel = $("puzzle");
-  puzzles.forEach((p) => sel.add(new Option(`${p.title}`, p.id)));
+  puzzles.forEach((p) => sel.add(new Option(p.title, p.id)));
   sel.onchange = () => loadPuzzle(sel.value);
   $("solve").onclick = solve;
   if (puzzles.length) await loadPuzzle(puzzles[0].id);

@@ -57,6 +57,22 @@ def test_deepseek_default_in_allowlist():
     assert GATEWAY_DEFAULT_MODEL in ALLOWED_MODELS
 
 
+def test_stream_oracle_emits_sse_and_done():
+    import json
+
+    with client.stream(
+        "POST", "/api/solve/stream", json={"puzzle_id": "example_3x3", "solver": "oracle"}
+    ) as res:
+        assert res.status_code == 200
+        assert res.headers["content-type"].startswith("text/event-stream")
+        body = "".join(res.iter_text())
+    events = [json.loads(line[6:]) for line in body.splitlines() if line.startswith("data: ")]
+    assert events[0]["event"] == "start"
+    assert events[-1]["event"] == "done"
+    assert events[-1]["score"]["solved"] is True
+    assert events[-1]["grid"] == ["CAT", "ARE", "TEN"]
+
+
 def test_disallowed_model_rejected_without_network():
     res = client.post(
         "/api/solve",
