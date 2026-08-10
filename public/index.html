@@ -107,8 +107,8 @@
     <strong>Jared Werba</strong> <span class="sep">·</span> FDE Candidate
     <span class="sep">·</span> August 10, 2026 <span class="sep">·</span>
     <a href="mailto:werba@protonmail.com">werba@protonmail.com</a>
-    <span class="sep">·</span>
-    <a class="chip" href="/jared-werba-resume.pdf" target="_blank" rel="noopener">Résumé (PDF)</a>
+    <span class="sep resume-only">·</span>
+    <a class="chip resume-only" href="/jared-werba-resume.pdf" target="_blank" rel="noopener">Résumé (PDF)</a>
   </p>
 
   <div class="controls">
@@ -416,7 +416,19 @@ async function solve() {
   }
 }
 
+// The résumé PDF is not in version control, so deployments built from the
+// repo do not carry it. Hide the link rather than show a dead one.
+async function checkResume() {
+  let ok = false;
+  try {
+    const res = await fetch("/jared-werba-resume.pdf", { headers: { Range: "bytes=0-0" } });
+    ok = res.ok;
+  } catch { ok = false; }
+  if (!ok) document.querySelectorAll(".resume-only").forEach((el) => el.remove());
+}
+
 async function init() {
+  checkResume();
   const puzzles = await api("/api/puzzles");
   const sel = $("puzzle");
   puzzles.forEach((p) => sel.add(new Option(p.title, p.id)));

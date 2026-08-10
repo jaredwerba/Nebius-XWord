@@ -82,7 +82,12 @@ def logo() -> FileResponse:  # Vercel serves public/ statically; these are for l
 
 @app.get("/jared-werba-resume.pdf")
 def resume() -> FileResponse:
-    return FileResponse(ROOT / "public" / "jared-werba-resume.pdf", media_type="application/pdf")
+    # Untracked by git (see .gitignore): present in CLI deploys, absent in
+    # deploys built from the repo. The page hides the link when it is missing.
+    path = ROOT / "public" / "jared-werba-resume.pdf"
+    if not path.is_file():
+        raise HTTPException(404, "resume not included in this deployment")
+    return FileResponse(path, media_type="application/pdf")
 
 
 @app.get("/api/puzzles")
