@@ -231,6 +231,7 @@ const $ = (id) => document.getElementById(id);
 let current = null;
 let generated = null;
 let timerId = null;
+let liveLetters = null;
 
 async function api(path, opts) {
   const res = await fetch(path, opts);
@@ -342,8 +343,24 @@ function startTimer(prior) {
 function beginSolvePhase() {
   solveT0 = performance.now();
   turnsDone = 0;
-  const cells = current.grid.length * current.grid[0].length;
-  expectedTurns = cells <= 9 ? 3.5 : cells <= 25 ? 4 : 5.5;
+  // The agent is asked to batch its fills, so a solve is typically one big
+  // filling turn plus a check-and-submit turn.
+  expectedTurns = current.grid.length > 5 ? 3 : 2.5;
+  liveLetters = current.grid.map((row) => row.split(""));
+}
+
+// Paint answers into the board as the agent plays them, so the grid fills in
+// while you watch. The authoritative grid arrives with the final event.
+function paintSlot(slotId, word) {
+  const slot = current.slots.find((s) => s.id === slotId.toUpperCase());
+  if (!slot || !liveLetters) return;
+  const letters = word ? word.toUpperCase() : ".".repeat(slot.length);
+  for (let i = 0; i < slot.length; i++) {
+    const r = slot.row + (slot.direction === "down" ? i : 0);
+    const c = slot.col + (slot.direction === "across" ? i : 0);
+    liveLetters[r][c] = letters[i] || ".";
+  }
+  renderBoard(current.grid, liveLetters.map((row) => row.join("")));
 }
 
 function stopTimer(label) {
@@ -385,6 +402,8 @@ function handleEvent(e) {
       const args = e.tool === "fill_slot" ? `${e.args.slot} = ${String(e.args.word || "").toUpperCase()}`
         : Object.keys(e.args || {}).length ? JSON.stringify(e.args) : "";
       logLine("call", `→ ${e.tool} ${args}`);
+      if (e.tool === "fill_slot") paintSlot(e.args.slot, e.args.word);
+      if (e.tool === "clear_slot") paintSlot(e.args.slot, null);
       break;
     }
     case "tool_result": {

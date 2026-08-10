@@ -50,10 +50,10 @@ Strategy:
 4. Clue conventions: a clue ending in '?' is wordplay — read it literally or
    punnily. Multi-word answers are written with no spaces or punctuation.
    Abbreviated clues want abbreviated answers.
-5. Before submitting, re-check any slot whose letters were mostly forced by
-   crossings: confirm the word actually answers its own clue. If it does not,
-   clear and fix it first.
-6. When every slot is filled and consistent, call submit.
+5. When your fills complete the grid, call submit in the same turn. A separate
+   confirmation turn is not needed: the grid already rejected any answer that
+   clashed with a crossing. Re-check a slot only when its letters were forced
+   entirely by crossings and the word looks wrong for its clue.
 
 Answers contain letters only (no spaces or punctuation)."""
 
