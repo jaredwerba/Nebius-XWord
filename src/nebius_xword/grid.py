@@ -160,14 +160,19 @@ class Puzzle:
         return Grid(self.grid_rows, self.clues)
 
 
-def load_puzzle(path: str | Path) -> Puzzle:
-    path = Path(path)
-    data = json.loads(path.read_text())
+def puzzle_from_mapping(data: Mapping, path: Path | None = None) -> Puzzle:
+    """Build a Puzzle from a decoded puzzle document."""
+    fallback = path.stem if path else "puzzle"
     return Puzzle(
-        id=data.get("id", path.stem),
-        title=data.get("title", path.stem),
-        grid_rows=list(data["grid"]),
-        clues=data.get("clues", {}),
-        solution=list(data["solution"]) if "solution" in data else None,
+        id=str(data.get("id", fallback)),
+        title=str(data.get("title", fallback)),
+        grid_rows=[str(row) for row in data["grid"]],
+        clues=dict(data.get("clues", {})),
+        solution=[str(row) for row in data["solution"]] if data.get("solution") else None,
         path=path,
     )
+
+
+def load_puzzle(path: str | Path) -> Puzzle:
+    path = Path(path)
+    return puzzle_from_mapping(json.loads(path.read_text()), path)

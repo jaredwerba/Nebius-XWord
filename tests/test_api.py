@@ -73,6 +73,40 @@ def test_stream_oracle_emits_sse_and_done():
     assert events[-1]["grid"] == ["CAT", "ARE", "TEN"]
 
 
+def test_inline_generated_puzzle_can_be_solved():
+    """A generated puzzle handed back by the browser solves and scores."""
+    document = {
+        "id": "generated-test",
+        "title": "Round trip",
+        "grid": ["...", "...", "..."],
+        "clues": {"across": {"1": "a", "4": "b", "5": "c"},
+                  "down": {"1": "d", "2": "e", "3": "f"}},
+        "solution": ["CAT", "ARE", "TEN"],
+    }
+    res = client.post("/api/solve", json={"puzzle": document, "solver": "oracle"})
+    assert res.status_code == 200
+    assert res.json()["score"]["solved"] is True
+
+
+def test_solve_requires_exactly_one_puzzle_source():
+    assert client.post("/api/solve", json={"solver": "oracle"}).status_code == 400
+    res = client.post(
+        "/api/solve",
+        json={"puzzle_id": "example_3x3", "puzzle": {"grid": ["..."]}, "solver": "oracle"},
+    )
+    assert res.status_code == 400
+
+
+def test_malformed_inline_puzzle_rejected():
+    res = client.post("/api/solve", json={"puzzle": {"nope": 1}, "solver": "oracle"})
+    assert res.status_code == 400
+
+
+@pytest.mark.parametrize("model", ["openai/o3-pro", "anthropic/claude-sonnet-4.5"])
+def test_generate_rejects_disallowed_model(model):
+    assert client.post("/api/generate", json={"model": model}).status_code == 400
+
+
 @pytest.mark.parametrize(
     "model", ["openai/o3-pro", "anthropic/claude-sonnet-4.5", "openai/gpt-4o", "openai/gpt-4o-mini"]
 )

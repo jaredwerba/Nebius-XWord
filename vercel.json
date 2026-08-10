@@ -10,6 +10,6 @@
     { "source": "/api/puzzles/:id", "destination": "/api/index?__path=/api/puzzles/:id" },
     { "source": "/api/solve", "destination": "/api/index?__path=/api/solve" },
     { "source": "/api/solve/stream", "destination": "/api/index?__path=/api/solve/stream" },
-    { "source": "/api/generate-solve", "destination": "/api/index?__path=/api/generate-solve" }
+    { "source": "/api/generate", "destination": "/api/index?__path=/api/generate" }
   ]
 }

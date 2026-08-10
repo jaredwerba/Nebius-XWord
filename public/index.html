@@ -229,6 +229,7 @@
 <script>
 const $ = (id) => document.getElementById(id);
 let current = null;
+let generated = null;
 let timerId = null;
 
 async function api(path, opts) {
@@ -328,8 +329,10 @@ function startTimer(prior) {
         const avg = (performance.now() - solveT0) / 1000 / turnsDone;
         $("eta").textContent = `~${Math.round((expectedTurns - turnsDone) * avg)}s left (est.)`;
       }
+    } else if (s < priorTotal) {
+      $("eta").textContent = `~${Math.round(priorTotal - s)}s left (estimating)`;
     } else {
-      $("eta").textContent = `~${Math.max(Math.round(priorTotal - s), 0)}s left (estimating)`;
+      $("eta").textContent = "taking longer than usual…";
     }
   }, 100);
 }
@@ -366,6 +369,7 @@ function handleEvent(e) {
       logLine("info", e.message);
       break;
     case "puzzle":
+      generated = e.document;  // carries the answer key, for scoring only
       showPuzzle(e, true);
       logLine("ok", `puzzle ready — "${e.title}" · ${e.slots.length} entries`);
       break;
@@ -415,7 +419,35 @@ function handleEvent(e) {
   }
 }
 
-async function runStream(url, body, { prior, status }) {
+// Consume one server-sent event stream, dispatching each event to the log.
+async function consume(url, body) {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || res.statusText);
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const chunks = buffer.split("\n\n");
+    buffer = chunks.pop();
+    for (const chunk of chunks) {
+      const line = chunk.split("\n").find((l) => l.startsWith("data: "));
+      if (line) handleEvent(JSON.parse(line.slice(6)));
+    }
+  }
+}
+
+// Wrap a run: reset the log and timer, keep the buttons parked until it ends.
+async function withRun(work, { prior, status }) {
   const buttons = [$("solve"), $("generate")];
   buttons.forEach((b) => (b.disabled = true));
   $("log").innerHTML = "";
@@ -423,29 +455,7 @@ async function runStream(url, body, { prior, status }) {
   $("status").textContent = status;
   startTimer(prior);
   try {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.detail || res.statusText);
-    }
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const chunks = buffer.split("\n\n");
-      buffer = chunks.pop();
-      for (const chunk of chunks) {
-        const line = chunk.split("\n").find((l) => l.startsWith("data: "));
-        if (line) handleEvent(JSON.parse(line.slice(6)));
-      }
-    }
+    await work();
   } catch (err) {
     stopTimer("failed");
     $("status").className = "err";
@@ -457,12 +467,19 @@ async function runStream(url, body, { prior, status }) {
 }
 
 const solve = () =>
-  runStream("/api/solve/stream", { puzzle_id: current.id, solver: "llm" },
-            { prior: 45, status: "Solving…" });
+  withRun(() => consume("/api/solve/stream", { puzzle_id: current.id, solver: "llm" }),
+          { prior: 45, status: "Solving…" });
 
+// Generation and solving are separate requests so neither has to fit both
+// into one function timeout; to the user it is still a single action.
 const generate = () =>
-  runStream("/api/generate-solve", {},
-            { prior: 130, status: "Building a new puzzle, then solving it blind…" });
+  withRun(async () => {
+    generated = null;
+    await consume("/api/generate", {});
+    if (!generated) throw new Error("generation did not return a puzzle");
+    logLine("info", "solving blind — the agent sees the clues, never the answers…");
+    await consume("/api/solve/stream", { puzzle: generated, solver: "llm" });
+  }, { prior: 130, status: "Building a new puzzle, then solving it blind…" });
 
 // The résumé PDF is not in version control, so deployments built from the
 // repo do not carry it. Hide the link rather than show a dead one.

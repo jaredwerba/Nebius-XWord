@@ -147,6 +147,17 @@ def to_puzzle(name: str, grid: Grid, title: str, clues: dict[str, str]) -> Puzzl
     )
 
 
+def puzzle_document(puzzle: Puzzle) -> dict:
+    """The puzzle as a plain document, answer key included (for scoring)."""
+    return {
+        "id": puzzle.id,
+        "title": puzzle.title,
+        "grid": puzzle.grid_rows,
+        "clues": puzzle.clues,
+        "solution": puzzle.solution,
+    }
+
+
 def generate_puzzle(model, rng: random.Random | None = None, template: str | None = None) -> Puzzle:
     """Fill a grid, clue it with the model, and return a solvable Puzzle."""
     name, grid = fill_random_template(rng=rng, template=template)

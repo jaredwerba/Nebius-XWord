@@ -21,7 +21,7 @@ from fastapi.responses import FileResponse, StreamingResponse  # noqa: E402
 from pydantic import BaseModel  # noqa: E402
 
 from eval.metrics import score_grid  # noqa: E402
-from nebius_xword.grid import Puzzle, load_puzzle  # noqa: E402
+from nebius_xword.grid import Puzzle, load_puzzle, puzzle_from_mapping  # noqa: E402
 
 PUZZLES_DIR = ROOT / "data" / "puzzles"
 
@@ -62,7 +62,8 @@ ALLOWED_MODELS = [
 
 
 class SolveRequest(BaseModel):
-    puzzle_id: str
+    puzzle_id: str | None = None  # a bundled puzzle...
+    puzzle: dict | None = None  # ...or a generated one handed back by the browser
     solver: str = "llm"  # "llm" or "oracle" (demo without an API key)
     model: str | None = None
 
@@ -137,6 +138,22 @@ def puzzle_detail(puzzle_id: str) -> dict:
     return puzzle_view(get_puzzle(puzzle_id))
 
 
+def resolve_puzzle(req: SolveRequest):
+    """A bundled puzzle by id, or one posted back after generation.
+
+    Either way the solver is handed only the layout and clues — the answer
+    key rides along solely so the finished grid can be scored.
+    """
+    if (req.puzzle_id is None) == (req.puzzle is None):
+        raise HTTPException(400, "provide exactly one of puzzle_id or puzzle")
+    if req.puzzle_id is not None:
+        return get_puzzle(req.puzzle_id)
+    try:
+        return puzzle_from_mapping(req.puzzle)
+    except (KeyError, TypeError, ValueError) as exc:
+        raise HTTPException(400, f"malformed puzzle: {exc}") from exc
+
+
 def validate_solve_request(req: SolveRequest, puzzle) -> None:
     if req.solver not in ("oracle", "llm"):
         raise HTTPException(400, f"unknown solver: {req.solver}")
@@ -164,7 +181,7 @@ def solve_payload(grid, puzzle, stats: dict) -> dict:
 
 @app.post("/api/solve")
 def solve(req: SolveRequest) -> dict:
-    puzzle = get_puzzle(req.puzzle_id)
+    puzzle = resolve_puzzle(req)
     validate_solve_request(req, puzzle)
     stats: dict = {"solver": req.solver}
     if req.solver == "oracle":
@@ -189,7 +206,7 @@ def solve(req: SolveRequest) -> dict:
 @app.post("/api/solve/stream")
 def solve_stream(req: SolveRequest) -> StreamingResponse:
     """Server-sent events: progress log lines while the agent solves."""
-    puzzle = get_puzzle(req.puzzle_id)
+    puzzle = resolve_puzzle(req)
     validate_solve_request(req, puzzle)
 
     def sse(payload: dict) -> str:
@@ -231,14 +248,14 @@ def sse_response(generator) -> StreamingResponse:
     )
 
 
-@app.post("/api/generate-solve")
-def generate_and_solve(req: GenerateRequest) -> StreamingResponse:
-    """Build a brand-new puzzle, then solve it blind, over one event stream.
+@app.post("/api/generate")
+def generate(req: GenerateRequest) -> StreamingResponse:
+    """Build a brand-new puzzle and stream progress while doing it.
 
     The grid is filled by wordlist search, so every entry is a real word and
-    every crossing is consistent. The model writes the clues. The solver then
-    starts from an empty grid and sees only the layout and those clues — the
-    answer key is used solely to score the attempt at the end.
+    every crossing is consistent — the model cannot produce a broken puzzle.
+    The model writes the clues. Solving is a separate request, so neither call
+    has to fit generation and solving into one function timeout.
     """
     if req.model is not None and req.model not in ALLOWED_MODELS:
         raise HTTPException(400, f"model must be one of {ALLOWED_MODELS}")
@@ -250,34 +267,26 @@ def generate_and_solve(req: GenerateRequest) -> StreamingResponse:
         try:
             import random
 
-            from nebius_xword.agent import CrosswordAgent, build_chat_model  # deferred
-            from nebius_xword.generator import fill_random_template, to_puzzle, write_clues
+            from nebius_xword.agent import build_chat_model  # deferred: heavy import
+            from nebius_xword.generator import (
+                fill_random_template,
+                puzzle_document,
+                to_puzzle,
+                write_clues,
+            )
 
             yield sse({"event": "phase", "phase": "grid",
                        "message": "searching the wordlist for a consistent grid…"})
             name, grid = fill_random_template(rng=random.Random(), template=req.template)
             yield sse({"event": "phase", "phase": "clues",
-                       "message": f"{name} grid filled — the model is writing clues "
-                                  "(this is the slow step, ~40-60s)…"})
+                       "message": f"{name} grid filled with real words — the model is now "
+                                  "writing the clues (the slow step, up to ~90s)…"})
 
-            model = build_chat_model(req.model)
-            title, clues = write_clues(model, grid)
+            title, clues = write_clues(build_chat_model(req.model), grid)
             puzzle = to_puzzle(name, grid, title, clues)
-            yield sse({"event": "puzzle", **puzzle_view(puzzle)})
-            yield sse({"event": "phase", "phase": "solve",
-                       "message": "solving blind — the agent sees the clues, never the answers…"})
-
-            agent = CrosswordAgent(model=req.model)
-            for event in agent.stream(puzzle):
-                if event["event"] == "result":
-                    result = event["result"]
-                    stats = {"solver": "llm", "model": result.model, "turns": result.turns,
-                             "tokens": result.total_tokens, "submitted": result.submitted}
-                    yield sse({"event": "done",
-                               **solve_payload(result.grid, puzzle, stats)})
-                else:
-                    yield sse(event)
+            yield sse({"event": "puzzle", **puzzle_view(puzzle),
+                       "document": puzzle_document(puzzle)})
         except Exception as exc:  # surface generation/provider errors into the log
-            yield sse({"event": "error", "message": f"generate-and-solve failed: {exc}"})
+            yield sse({"event": "error", "message": f"generation failed: {exc}"})
 
     return sse_response(events())

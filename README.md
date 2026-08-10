@@ -102,6 +102,13 @@ Work is split so each side does what it is reliable at:
    The answer key never enters its context; it is used afterwards, only to
    score the attempt.
 
+Generating and solving are two separate requests (`POST /api/generate`, then
+`POST /api/solve/stream` with the puzzle inline). Together they run well past
+a single function timeout — a measured end-to-end run took 322s — so the
+browser holds the finished puzzle between the two calls and hands it back.
+The answer key rides along in that hand-off purely so the result can be
+scored; it is never part of what the solver reads.
+
 Caveat worth stating plainly: the same model writes the clues and solves them.
 It cannot see the answers while solving, but its own phrasing may suit it
 better than a stranger's would. Treat generated-puzzle scores as a
