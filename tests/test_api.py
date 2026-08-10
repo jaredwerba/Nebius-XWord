@@ -47,3 +47,19 @@ def test_oracle_solve_scores_perfect():
 def test_unknown_solver_rejected():
     res = client.post("/api/solve", json={"puzzle_id": "example_3x3", "solver": "magic"})
     assert res.status_code == 400
+
+
+def test_deepseek_default_in_allowlist():
+    from api.index import ALLOWED_MODELS
+    from nebius_xword.agent import GATEWAY_DEFAULT_MODEL
+
+    assert GATEWAY_DEFAULT_MODEL == "deepseek/deepseek-v4-flash-0731"
+    assert GATEWAY_DEFAULT_MODEL in ALLOWED_MODELS
+
+
+def test_disallowed_model_rejected_without_network():
+    res = client.post(
+        "/api/solve",
+        json={"puzzle_id": "example_3x3", "solver": "llm", "model": "openai/o3-pro"},
+    )
+    assert res.status_code == 400

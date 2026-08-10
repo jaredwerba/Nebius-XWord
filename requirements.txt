@@ -1,5 +1,8 @@
 # Runtime dependencies for the Vercel deployment (see pyproject.toml for the
 # installable package + dev tooling).
 fastapi>=0.115
-openai>=1.40
+openai>=2.45,<3
 python-dotenv>=1.0
+langgraph>=1.2,<2
+langchain-openai>=1.4,<2
+langchain-core>=1.5,<2

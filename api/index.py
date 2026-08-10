@@ -54,6 +54,8 @@ def get_puzzle(puzzle_id: str) -> Puzzle:
 
 # The public endpoint pays for gateway tokens, so only these models are allowed.
 ALLOWED_MODELS = [
+    "deepseek/deepseek-v4-flash-0731",
+    "deepseek/deepseek-v4-flash",
     "openai/gpt-4o-mini",
     "openai/gpt-4o",
     "anthropic/claude-sonnet-4.5",

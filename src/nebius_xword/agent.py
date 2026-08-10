@@ -1,30 +1,33 @@
-"""LLM crossword agent: a tool-use loop over an OpenAI-compatible endpoint.
+"""LLM crossword agent: a LangGraph tool loop over an OpenAI-compatible endpoint.
 
-Two supported backends, both via the standard ``openai`` client:
+Two supported backends, both via ``langchain-openai``'s ChatOpenAI:
 
 - **Vercel AI Gateway** (default): set ``LLM_API_KEY`` (or run on Vercel, where
   the OIDC token is used automatically). Models use gateway slugs like
-  ``openai/gpt-4o-mini``.
+  ``deepseek/deepseek-v4-flash-0731``.
 - **Nebius AI Studio** (direct): set ``NEBIUS_API_KEY``; models use Nebius
   slugs like ``meta-llama/Meta-Llama-3.1-70B-Instruct``.
 
-Explicit constructor arguments always win over environment variables.
+Explicit constructor arguments always win over environment variables. The
+control flow lives in :mod:`nebius_xword.graph`; this module resolves config,
+builds the model, and assembles the SolveResult.
 """
 
 from __future__ import annotations
 
-import json
 import os
 from dataclasses import dataclass
 
 from dotenv import load_dotenv
-from openai import OpenAI
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langgraph.errors import GraphRecursionError
 
+from .graph import build_solver_graph
 from .grid import Grid, Puzzle
 from .tools import TOOL_SCHEMAS, ToolExecutor
 
 GATEWAY_BASE_URL = "https://ai-gateway.vercel.sh/v1"
-GATEWAY_DEFAULT_MODEL = "openai/gpt-4o-mini"
+GATEWAY_DEFAULT_MODEL = "deepseek/deepseek-v4-flash-0731"
 NEBIUS_BASE_URL = "https://api.studio.nebius.com/v1/"
 NEBIUS_DEFAULT_MODEL = "meta-llama/Meta-Llama-3.1-70B-Instruct"
 
@@ -34,10 +37,18 @@ You are Nebius-XWord, an expert crossword solver.
 Strategy:
 1. Call get_state to see the grid, clues, and current fill patterns.
 2. Fill the answers you are most confident about first.
-3. Use crossing letters (the '.' patterns) to constrain uncertain answers.
-4. If fill_slot reports conflicts, reconsider — one of the crossing answers
-   is wrong. Use clear_slot to back out and try alternatives.
-5. When every slot is filled and consistent, call submit.
+3. Then prefer the most-constrained slots: the ones whose patterns already
+   contain crossing letters. Use those letters to narrow the answer.
+4. If fill_slot reports conflicts, one of the crossing answers is wrong.
+   Use clear_slot to back out and try alternatives. Never re-try an answer
+   that was already rejected or cleared — enumerate different candidates.
+5. Clue conventions: a clue ending in '?' is wordplay — read it literally or
+   punnily. Multi-word answers are written with no spaces or punctuation.
+   Abbreviated clues want abbreviated answers.
+6. Before calling submit, call get_state once more and re-check every slot
+   whose letters were mostly forced by crossings: confirm the word actually
+   answers its own clue. If it does not, clear and fix it first.
+7. When every slot is filled and consistent, call submit.
 
 Answers contain letters only (no spaces or punctuation)."""
 
@@ -90,44 +101,54 @@ class CrosswordAgent:
         base_url: str | None = None,
         max_turns: int = 24,
         verbose: bool = False,
+        *,
+        chat_model=None,
     ):
+        """``chat_model`` injects a pre-built LangChain chat model (tests)."""
         self.model, key, url = resolve_llm_config(model, api_key, base_url)
-        self.client = OpenAI(api_key=key, base_url=url)
+        if chat_model is not None:
+            self._model = chat_model
+        else:
+            from langchain_openai import ChatOpenAI  # deferred: heavy import
+
+            self._model = ChatOpenAI(
+                model=self.model,
+                api_key=key,
+                base_url=url,
+                use_responses_api=False,  # pin the Chat Completions surface
+            ).bind_tools(TOOL_SCHEMAS)
         self.max_turns = max_turns
         self.verbose = verbose
 
     def solve(self, puzzle: Puzzle) -> SolveResult:
-        """Run the tool loop until the model submits or turns run out."""
+        """Run the graph until the model submits, stops, or turns run out."""
         executor = ToolExecutor(puzzle)
-        messages: list = [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": "Solve this puzzle:\n" + executor.execute("get_state", {})},
-        ]
-        turns = prompt_tokens = completion_tokens = 0
-        for turn in range(self.max_turns):
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                tools=TOOL_SCHEMAS,
-            )
-            turns += 1
-            if response.usage is not None:
-                prompt_tokens += response.usage.prompt_tokens or 0
-                completion_tokens += response.usage.completion_tokens or 0
-            message = response.choices[0].message
-            messages.append(message)
-            if not message.tool_calls:
-                break  # model stopped calling tools; take the grid as-is
-            for call in message.tool_calls:
-                args = json.loads(call.function.arguments or "{}")
-                result = executor.execute(call.function.name, args)
-                if self.verbose:
-                    print(f"[turn {turn}] {call.function.name}({args}) -> {result}")
-                messages.append(
-                    {"role": "tool", "tool_call_id": call.id, "content": result}
-                )
-            if executor.submitted:
-                break
+        graph = build_solver_graph(
+            self._model, executor, max_turns=self.max_turns, verbose=self.verbose
+        )
+        init = {
+            "messages": [
+                SystemMessage(content=SYSTEM_PROMPT),
+                HumanMessage(
+                    content="Solve this puzzle:\n" + executor.execute("get_state", {})
+                ),
+            ],
+            "turns": 0,
+        }
+        try:
+            final = graph.invoke(init, config={"recursion_limit": 2 * self.max_turns + 4})
+            turns = final["turns"]
+            messages = final["messages"]
+        except GraphRecursionError:  # backstop; the turns counter normally stops first
+            turns, messages = self.max_turns, []
+
+        prompt_tokens = completion_tokens = 0
+        for message in messages:
+            usage = getattr(message, "usage_metadata", None)
+            if isinstance(message, AIMessage) and usage:
+                prompt_tokens += usage.get("input_tokens", 0) or 0
+                completion_tokens += usage.get("output_tokens", 0) or 0
+
         return SolveResult(
             grid=executor.grid,
             turns=turns,

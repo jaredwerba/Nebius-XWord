@@ -7,11 +7,14 @@ evaluation harness, and a web UI.
 press Solve, and watch the agent fill the grid (the Oracle option demos the
 pipeline without spending tokens).
 
-The agent runs a tool-use loop against an LLM: the model inspects the grid and
-clues, fills the slots it is confident about, uses crossing letters to
-constrain the rest, and backtracks when the grid reports conflicts. The grid
-engine enforces the rules (slot detection, numbering, conflict checking), so
-the model is never trusted about grid state — only about answers.
+The agent is a **LangGraph** `StateGraph` with two nodes: an *agent* node
+(the LLM, bound to four tools) and a *tools* node backed by a deterministic
+grid engine. The model inspects the grid and clues, fills the slots it is
+confident about, uses crossing letters to constrain the rest, and backtracks
+when the grid reports conflicts. The run ends when the model calls `submit`,
+stops calling tools, or hits the turn cap. The grid engine enforces the rules
+(slot detection, numbering, conflict checking), so the model is never trusted
+about grid state — only about answers.
 
 ## Repository layout
 
@@ -19,7 +22,8 @@ the model is never trusted about grid state — only about answers.
 ├── src/nebius_xword/     # core package (dependency-free except agent.py)
 │   ├── grid.py           #   grid model: slots, numbering, fills, conflicts
 │   ├── tools.py          #   tool schemas + executor exposed to the LLM
-│   ├── agent.py          #   CrosswordAgent: the LLM tool loop
+│   ├── graph.py          #   LangGraph StateGraph: agent + tools nodes, stops
+│   ├── agent.py          #   CrosswordAgent: model config + graph invocation
 │   └── solver.py         #   pattern matching, backtracking filler, validation
 ├── api/index.py          # FastAPI app (also the Vercel entry point)
 ├── public/index.html     # web UI: pick a puzzle, watch the agent solve it
@@ -37,8 +41,12 @@ Two interchangeable OpenAI-compatible backends (see `.env.example`):
 
 | | env vars | default model |
 |---|---|---|
-| **Vercel AI Gateway** (default) | `LLM_API_KEY` (+ optional `LLM_MODEL`, `LLM_BASE_URL`) | `openai/gpt-4o-mini` |
+| **Vercel AI Gateway** (default) | `LLM_API_KEY` (+ optional `LLM_MODEL`, `LLM_BASE_URL`) | `deepseek/deepseek-v4-flash-0731` |
 | **Nebius AI Studio** (direct) | `NEBIUS_API_KEY` (+ optional `NEBIUS_MODEL`, `NEBIUS_BASE_URL`) | `meta-llama/Meta-Llama-3.1-70B-Instruct` |
+
+The default is the dated DeepSeek checkpoint so eval numbers stay
+reproducible; the undated alias `deepseek/deepseek-v4-flash` tracks weight
+updates and is also allowlisted.
 
 When deployed on Vercel, the function's OIDC token is used for AI Gateway
 automatically, so no key needs to be configured. Explicit constructor args >
@@ -113,19 +121,24 @@ as the unique solution.
 
 ### Results (2026-08-10, via the deployed agent, 2 runs per puzzle)
 
-`anthropic/claude-sonnet-4.5`:
+`deepseek/deepseek-v4-flash-0731` (the default; LangGraph loop):
 
 | puzzle | letters | words | solved | turns | tokens |
 |---|---|---|---|---|---|
-| example_3x3 | 100% | 100% | 2/2 | 3.5 | 6.4k |
-| example_mini_5x5 | 100% | 100% | 2/2 | 4.0 | 9.4k |
-| example_5x5_b | 100% | 100% | 2/2 | 3.5 | 8.3k |
-| example_7x7 | 100% | 100% | 2/2 | 5.5 | 22.5k |
+| example_3x3 | 100% | 100% | 2/2 | 3.5 | 5.9k |
+| example_mini_5x5 | 100% | 100% | 2/2 | 3.5 | 15.1k |
+| example_5x5_b | 100% | 100% | 2/2 | 3.5 | 9.8k |
+| example_7x7 | 100% | 100% | 2/2 | 5.0 | 30.7k |
 
-For contrast, `openai/gpt-4o-mini` on the 3×3 (1 run) scored 67% letters / 33%
-words — it answered SIX for "Half a score" and submitted despite nonsense
-crossings, which is exactly the failure mode the word-accuracy metric and the
-backtrack baseline are designed to expose.
+At ~$0.014/M input and $0.028/M output, a full 4-puzzle eval run costs well
+under a cent. `anthropic/claude-sonnet-4.5` also scored 8/8 on the
+pre-LangGraph loop (3.5–5.5 turns, 6.4k–22.5k tokens) and was re-verified
+post-port on the 7×7 (solved, 6 turns) — the port did not regress scores.
+
+For contrast, `openai/gpt-4o-mini` on the 3×3 (1 run, pre-port) scored 67%
+letters / 33% words — it answered SIX for "Half a score" and submitted despite
+nonsense crossings, which is exactly the failure mode the word-accuracy metric
+and the backtrack baseline are designed to expose.
 
 ## Tests
 
@@ -172,7 +185,11 @@ backtracking filler.
 ## Roadmap
 
 - [x] Wordlist-backed backtracking filler (baseline + puzzle construction)
+- [x] LangGraph port of the agent loop
 - [ ] Candidate-suggestion tool (`suggest(pattern)`) so the model can query the
       wordlist for slots it can't answer from the clue alone
+- [ ] Top-k candidate lists per clue + deterministic beam-search assignment
+      (keeps the LLM out of the inner loop for big grids)
+- [ ] JSON tool-protocol fallback for models without native tool calling
 - [ ] Puzzle importers (.puz / NYT-style formats) to grow the eval set
 - [ ] Per-model eval comparison across gateway-hosted models
