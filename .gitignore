@@ -24,3 +24,6 @@ build/
 .vscode/
 .vercel
 .claude/
+
+# Third-party puzzle data: fetched at runtime, never committed (copyright)
+data/external/
