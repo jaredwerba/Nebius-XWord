@@ -58,7 +58,7 @@ with three deliverables.
 - Public: https://github.com/jaredwerba/Nebius-XWord (main branch).
 - README is written in ASD-STE100-style controlled English, first person,
   addressed to the reviewing hiring manager; setup is 4 commands; the test
-  suite (58 tests) runs offline with no API key.
+  suite (65 tests) runs offline with no API key.
 
 ### 0.4 Extensions beyond the brief (each measurable on the live page)
 
@@ -70,6 +70,12 @@ with three deliverables.
    mean over the 4 recorded races; 3.1×).
 5. Honest failure documentation (see §8: Flash-no-tools trap, gpt-oss failure,
    the env-load race bug).
+6. **External puzzles (§11)**: an importer for third-party crosswords that
+   reads only rendered content, and a completed run against a real
+   newspaper-size 13×13 daily — DeepSeek V4 Pro on Nebius filled all 60
+   interlocking entries and submitted, in 98 turns / 996s / 2.44M tokens.
+   This is the strongest single evidence that the agent generalizes past the
+   repository's own fixtures.
 
 ---
 
@@ -84,10 +90,12 @@ src/nebius_xword/
                 and ToolExecutor: dispatches {get_state,fill_slot,clear_slot,
                 submit} against a live Grid; JSON-encodes results; converts
                 KeyError/ValueError/TypeError into {"error": ...} payloads.
-  graph.py      LangGraph StateGraph. AgentState = MessagesState + turns:int.
-                Nodes: agent_node (model.invoke), tools_node (executor).
-                Edges: START→agent; agent→(tools|END on no tool_calls);
-                tools→(END if executor.submitted or turns>=max_turns else agent).
+  graph.py      LangGraph StateGraph. AgentState = MessagesState + turns:int
+                + nudges:int. Nodes: agent_node (model.invoke over a windowed
+                history), tools_node (executor), nudge_node (§11.4).
+                Edges: START→agent; agent→(tools | nudge on prose | END);
+                tools→(END if submitted or turns>=max_turns else agent);
+                nudge→agent. window_messages bounds re-sent context.
   agent.py      resolve_llm_config (env precedence), build_chat_model
                 (ChatOpenAI, use_responses_api=False), CrosswordAgent
                 (solve/stream), SolveResult, SYSTEM_PROMPT.
@@ -96,6 +104,9 @@ src/nebius_xword/
                 answer-leak masking + one retry), to_puzzle, puzzle_document.
   solver.py     matches/candidates (pattern ops), fill_grid (backtracking,
                 §3), verify_puzzle (file validation).
+  external.py   third-party import (§11): puzzle_from_scrape, check_import
+                (numbering guard), audit_fill and compare_fills (scoring
+                substitutes when no answer key exists), EXTRACTION_JS.
 api/index.py    FastAPI app; also the Vercel serverless entry point. Routing
                 of models to services (connection_for), SSE endpoints,
                 middleware for Vercel quirks (§5.2, §5.3).
@@ -105,7 +116,7 @@ eval/           run_eval.py (harness; solvers empty/oracle/backtrack/llm,
                 --runs, --json), metrics.py (score_grid).
 data/puzzles/   4 fixed puzzles, JSON (schema §2.3).
 data/wordlist.txt  1,663 curated common words (lengths 3,4,5,7).
-tests/          58 tests, all offline. Fake-model driven graph tests (§6).
+tests/          65 tests, all offline. Fake-model driven graph tests (§6).
 scripts/solve.py  CLI single solve.
 vercel.json     5 rewrites carrying __path (§5.2); maxDuration 300.
 ```
@@ -272,7 +283,7 @@ shared scale, longest bar capped at 74% width so value labels never clip);
 a static "recorded average" block (17.5s vs 53.7s, 3.1×, n=4, all DeepSeek
 V4 Pro) is hardcoded in the HTML with provenance in a comment.
 
-## 6. Testing strategy (58 tests, all offline)
+## 6. Testing strategy (65 tests, all offline)
 
 - Grid: numbering, lengths, conflicts, validation, clear, set_rows.
 - Puzzles: every data/puzzles/*.json passes verify_puzzle (glob-based).
@@ -355,50 +366,109 @@ from ~420s to 153s; post-trim regression run solved 4/4 in 2/3/2/2 turns
 
 ## 10. Branches
 
-- `main`: everything above.
-- `feature/puzzle-generator`: historical; merged into main (fast-forward).
-- `external`: importer for third-party puzzles (`src/nebius_xword/external.py`
-  + `tests/test_external.py`). First target: a boatloadpuzzles.com 13×13
-  daily. Method: read the **rendered** page only (block layout from
-  `.grect`/`.gblacksquare` divs on a 25px lattice; clue text from
-  `td.cnum`/`td.cfullclue`); the publisher's encrypted answer blob
-  (`puzBody` in `/getcrossword`) is never requested or decoded — that is a
-  deliberate line, not a technical gap. Import self-validates: engine-derived
-  numbering must equal the page's printed clue numbers (60/60 matched).
-  Copyright: puzzle text lives only under gitignored `data/external/`; the
-  repo ships code.
+- `main`: everything in this document. HEAD at time of writing: c3de98b.
+- `feature/puzzle-generator`: historical; merged (fast-forward).
+- `external`: the third-party importer and the 160-turn work below; merged
+  into main (fast-forward) on 2026-08-11. Kept as a marker, identical to main.
 
-  Measured outcomes (2026-08-11, both models on Nebius; no key, so scoring
-  uses audit_fill + cross-model agreement):
+## 11. External puzzles — method, guardrail, and final results
 
-  Round 1, max_turns=40, full history (pre-window):
-  - Qwen3-235B: 42.7s, cap hit, 16/60 filled, 234k tokens.
-  - DeepSeek V4 Pro: 282.2s, cap hit, 57/60 filled, 1.09M tokens.
-  - Agreement 5/60. Cost ≈ $2.40. Lesson: quadratic history cost and a
-    too-small turn budget dominate the failure.
+### 11.1 Import method
 
-  Round 2, max_turns=160, history_window=48 (cost now linear in turns):
-  - First Qwen attempt died at turn 1: it answered in prose and the
-    no-tool-calls rule ended the run. This produced the nudge node in
-    graph.py (≤3 corrective pushes back to tool use).
-  - **DeepSeek V4 Pro: submitted a complete 60/60 grid** — 98 turns, 996s,
-    2.44M tokens, ≈$4.40. First full completion of a real external daily.
-    80% of entries in /usr/share/dict/words; several "unknowns" are
-    plausibly abbreviations the dictionary lacks (the puzzle has "(abbr.)"
-    clues). Every crossing is engine-verified consistent, a strong
-    structural constraint on a 60-slot interlock.
-  - Qwen3-235B with the nudge: ran all 160 turns, 146.4s, 787k tokens,
-    ≈$0.16, but filled only 36/60 (61% in-vocab). Fast and cheap is not
-    enough here.
-  - Agreement V4 Pro vs Qwen: 12/60 (20%) — weak corroboration. Honest
-    claim: an agent can now *complete* a hard external crossword with full
-    structural consistency; per-answer correctness is unverifiable without
-    the publisher's key, and cross-model agreement does not yet support a
-    strong accuracy claim. Total external-experiment spend ≈ $7.
-  - Next lever unchanged: per-clue candidate lists + engine-side constraint
-    search; also a cheap second opinion (different model family) to make
-    agreement a stronger signal.
-  - GLM-5.1 was started as that second opinion and stopped mid-run by owner
-    decision: at ~27s/turn it projected to ~1h, unusable for a demo. The
-    page and README now present the V4 Pro completion as the headline, with
-    Qwen's shortfall and the GLM pacing stated plainly.
+`src/nebius_xword/external.py` + `tests/test_external.py` (5 tests, synthetic
+fixtures only). Target: the boatloadpuzzles.com daily 13×13, 60 slots.
+
+The importer consumes a scrape of **what the page renders**:
+- block layout from `.grect` / `.gblacksquare` divs, positioned on a 25px
+  lattice (13 unique x, 13 unique y → 13×13);
+- clue text from `td.cnum` (number) and `td.cfullclue` (text), DOM order,
+  across/down split at the first number decrease;
+- `EXTRACTION_JS` in the module is the exact browser snippet used.
+
+`check_import` is the load-bearing guard: the engine derives slot numbers
+independently from the scraped blocks, and the import raises unless that set
+equals the page's printed clue numbers. On the real target: 60/60 matched,
+which is what makes the scrape trustworthy enough to solve against.
+
+### 11.2 The guardrail (deliberate, not a gap)
+
+The publisher ships the solution as an encrypted blob (`puzBody`, served by
+`/getcrossword`, decoded by their minified `Crossword.js`). This project does
+**not** request, decode, or reverse that blob. Consequences that propagate
+through the code:
+- imported `Puzzle.solution is None`; `score_grid` is therefore unavailable;
+- substitute signals live in the same module: `audit_fill` (completeness,
+  engine-verified crossing consistency, share of entries present in a
+  reference dictionary, list of unknowns) and `compare_fills` (per-slot
+  agreement between two independent solves);
+- puzzle text never enters git: `data/external/` is gitignored. The repo
+  ships code, not the publisher's content.
+
+### 11.3 Final measured results (2026-08-11, all on Nebius Token Factory)
+
+Round 1 — max_turns=40, full history (pre-window):
+
+| Model | Wall | Turns | Tokens | Filled | Note |
+|---|---|---|---|---|---|
+| Qwen3-235B | 42.7s | 40 (cap) | 234k | 16/60 | thrash: fill→conflict→clear |
+| DeepSeek V4 Pro | 282.2s | 40 (cap) | 1.09M | 57/60 | 13 out-of-dictionary |
+
+Agreement 5/60. Cost ≈ $2.40. Diagnosis: quadratic history cost plus too small
+a turn budget, not (only) model capability.
+
+Round 2 — max_turns=160, history_window=48 (cost linear in turns):
+
+| Model | Wall | Turns | Tokens | Cost | Result |
+|---|---|---|---|---|---|
+| **DeepSeek V4 Pro** | **996.0s** | **98** | **2.44M** | **≈$4.40** | **60/60, submitted, complete** |
+| Qwen3-235B (nudged) | 146.4s | 160 (cap) | 787k | ≈$0.16 | 36/60, incomplete |
+| Qwen3-235B (first try) | 7.1s | 1 | 2.8k | ≈$0.00 | 0/60 — prose exit, see §11.4 |
+| GLM-5.1 | — | — | — | — | stopped by owner; ~27s/turn ⇒ ~1h projected |
+
+- V4 Pro is the headline: it **chose** to call `submit` (not a cap stop) with
+  every one of 60 interlocking entries filled and every crossing verified by
+  the engine. 80% of its entries appear in `/usr/share/dict/words`; several
+  "unknowns" are plausibly abbreviations the dictionary lacks — the puzzle has
+  explicit "(abbr.)" clues.
+- Cross-model agreement V4 Pro vs Qwen: 12/60 (20%). Qwen filled only 36
+  slots, so this is weak corroboration and is reported as such.
+- GLM-5.1 was launched as a same-strength second opinion from a different
+  model family (the point being that agreement between families is
+  evidentially stronger than within one). It was stopped mid-run on owner
+  instruction: the projected ~1h runtime is unusable for a hiring-manager
+  demo, and V4 Pro's completion was deemed sufficient.
+- Total external-experiment spend ≈ $7.5 of the $50 credit.
+
+**Claim discipline.** What is demonstrated: the agent can *complete* a real
+newspaper-size crossword with full structural consistency, unaided, in ~17
+minutes. What is NOT demonstrated: per-answer correctness, which cannot be
+computed without the publisher's key, and which 20% cross-model agreement
+does not establish. Both the page and the README state exactly this.
+
+### 11.4 Two agent improvements this run forced
+
+1. **History window** (`graph.window_messages`, default 48). Every turn used
+   to resend the entire conversation → O(turns²) tokens; one 40-turn solve
+   cost 1.09M. The window keeps `messages[:2]` (system prompt + initial grid
+   and clues) plus the last N, and drops any leading `ToolMessage` after the
+   cut so the API never sees a tool result without its originating call. Cost
+   is now linear; an unwindowed 160-turn V4 Pro run was projected at ~$35.
+   The model re-syncs anything scrolled out by calling `get_state`.
+2. **Nudge node** (`graph.py`, `AgentState.nudges`). A model that answers in
+   prose used to end the run outright, because "no tool calls" meant done —
+   this killed the first 160-turn Qwen attempt at turn 1 with 0/60. The graph
+   now routes a prose reply to a `nudge` node that appends a corrective user
+   message and returns to the agent, at most 3 times, so a model that never
+   calls tools still terminates. `recursion_limit` raised to
+   `2*max_turns + 12` to accommodate the extra hops.
+
+Both are covered by offline tests (window head/tail/orphan behavior; a
+prose-only model terminating after the nudge budget; a prose start that
+recovers and solves).
+
+### 11.5 Presentation
+
+The live page carries a recorded "A real external puzzle" section (not a live
+run — a 13×13 takes ~17 min, which no reviewer will wait through), with the
+V4 Pro numbers, the Qwen shortfall, the GLM pacing decision, and the
+encryption guardrail stated plainly. README mirrors it.
