@@ -86,13 +86,13 @@ for comparison. To be precise about how:
   point: it makes every cross-service comparison a comparison of
   infrastructure, not of models.
 
-| Service | Model ids on the page | Price in/out per 1M tokens | Key |
+| Service | Model id on the page | Price in/out per 1M tokens | Key |
 |---|---|---|---|
-| **Nebius Token Factory** (default) | `deepseek-ai/DeepSeek-V4-Pro` · `Qwen/Qwen3-235B-A22B-Instruct-2507` | $1.75 / $3.50 · $0.20 / $0.60 | `NEBIUS_API_KEY` |
-| Vercel AI Gateway | `deepseek/deepseek-v4-pro` · `alibaba/qwen-3-235b` | $1.74 / $3.48 · $0.22 / $0.88 | `LLM_API_KEY`, or the Vercel OIDC token |
+| **Nebius Token Factory** (default) | `deepseek-ai/DeepSeek-V4-Pro` | $1.75 / $3.50 | `NEBIUS_API_KEY` |
+| Vercel AI Gateway | `deepseek/deepseek-v4-pro` | $1.74 / $3.48 | `LLM_API_KEY`, or the Vercel OIDC token |
 
-The dropdown on the page lists these four ids. Choosing an id therefore also
-chooses the service that serves it. V4 Pro costs almost the same on both
+The dropdown on the page lists these two ids. Choosing an id therefore also
+chooses the service that serves it. The model costs almost the same on both
 services, which makes the race below a clean comparison.
 
 Nebius AI Studio is now called **Nebius Token Factory**. Its host is
@@ -120,15 +120,16 @@ I then ran candidates on the sample puzzles:
 | Model | Result |
 |---|---|
 | `deepseek-ai/DeepSeek-V4-Pro` | Solved every puzzle. My default. |
-| `Qwen/Qwen3-235B-A22B-Instruct-2507` | Solved the 3×3 in 2.5s, but failed the harder puzzles. |
 | `nvidia/nemotron-3-super-120b-a12b` | Solved the two smaller puzzles only. |
 | `meta-llama/Llama-3.3-70B-Instruct` | Solved the 3×3, but needed 7 turns. |
 | `openai/gpt-oss-120b` | Failed the 3×3 at 33% of letters. |
 
-I kept two models on purpose. DeepSeek V4 Pro gives dependable tool calling.
-Qwen3 235B gives raw speed. The two goals pull in different directions on this
-catalog, and the pair covers both. I documented the failures as well as the
-successes, because the failures are what a colleague needs to know.
+Only DeepSeek V4 Pro solves the whole set, so it is the only model the page
+offers. Several faster or cheaper models solve the 3×3 and then fail a 7×7,
+which is worse than useless in a demo: the speed looks good until the grid
+does not finish. I measured the candidates rather than guessing, and I record
+the failures as well as the winner, because the failures are what a colleague
+needs to know.
 
 ## Run it yourself
 
@@ -275,13 +276,13 @@ matched the numbers printed on the page.
 and 2.44 million tokens — about $4.40 of inference. Two agent improvements
 came out of this run. A history window bounds what the model re-reads each
 turn, which keeps token cost linear instead of quadratic. And a nudge step
-pushes a model back to tool calls when it answers in prose, which is how the
-first Qwen attempt died.
+pushes a model back to tool calls when it answers in prose, which ended one
+early attempt at turn one.
 
-The other models fell short, and I report that plainly. Qwen3 235B filled 36
-of 60 entries before its 160-turn budget ran out. GLM-5.1 works at a pace
-that would need about an hour for this grid, so I stopped it — a demo should
-not make a reviewer wait.
+Other models fell short, and I report that plainly. Smaller models ran out of
+turns with the grid unfinished. GLM-5.1 works at a pace that would need about
+an hour for this grid, so I stopped it — a demo should not make a reviewer
+wait.
 
 One boundary matters here. The publisher encrypts its answer key, and this
 project does not break encryption. "Completed" therefore means the grid is

@@ -67,14 +67,12 @@ def get_puzzle(puzzle_id: str) -> Puzzle:
 # The public endpoints spend real credit, so only these models may be selected.
 # The service that serves each model is implied by which set it belongs to.
 NEBIUS_MODELS = {
-    "Qwen/Qwen3-235B-A22B-Instruct-2507",
     "deepseek-ai/DeepSeek-V4-Pro",
 }
 # The gateway side mirrors the Nebius models exactly — the same weights under
 # each service's own id — so every cross-service comparison is apples to apples.
 GATEWAY_MODELS = {
     "deepseek/deepseek-v4-pro",
-    "alibaba/qwen-3-235b",  # Qwen3-235B-A22B-Instruct-2507, same as the Nebius id
 }
 ALLOWED_MODELS = sorted(NEBIUS_MODELS | GATEWAY_MODELS)
 DEFAULT_MODEL = "deepseek-ai/DeepSeek-V4-Pro"
@@ -89,11 +87,6 @@ COMPARE_PAIRS = [
         "label": "DeepSeek V4 Pro",
         "nebius": "deepseek-ai/DeepSeek-V4-Pro",
         "gateway": "deepseek/deepseek-v4-pro",
-    },
-    {
-        "label": "Qwen3 235B",
-        "nebius": "Qwen/Qwen3-235B-A22B-Instruct-2507",
-        "gateway": "alibaba/qwen-3-235b",
     },
 ]
 COMPARE_PAIR = COMPARE_PAIRS[0]  # the default the page opens on

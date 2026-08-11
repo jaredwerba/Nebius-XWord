@@ -212,28 +212,28 @@ Measured: grid fill <0.1s (5×5) / ~1s (7×7); clue writing on Nebius V4 Pro
 ### 5.1 Model→service routing
 
 ```python
-NEBIUS_MODELS  = {"Qwen/Qwen3-235B-A22B-Instruct-2507", "deepseek-ai/DeepSeek-V4-Pro"}
-GATEWAY_MODELS = {"deepseek/deepseek-v4-pro", "alibaba/qwen-3-235b"}
-COMPARE_PAIR   = {"label": "DeepSeek V4 Pro",
-                  "nebius": "deepseek-ai/DeepSeek-V4-Pro",
-                  "gateway": "deepseek/deepseek-v4-pro"}
+NEBIUS_MODELS  = {"deepseek-ai/DeepSeek-V4-Pro"}
+GATEWAY_MODELS = {"deepseek/deepseek-v4-pro"}
+COMPARE_PAIRS  = [{"label": "DeepSeek V4 Pro",
+                   "nebius": "deepseek-ai/DeepSeek-V4-Pro",
+                   "gateway": "deepseek/deepseek-v4-pro"}]
 ```
 `connection_for(model)` returns explicit `{model, base_url, api_key}`;
 Nebius ids → `https://api.tokenfactory.nebius.com/v1` + NEBIUS_API_KEY;
 everything else → `https://ai-gateway.vercel.sh/v1` + (LLM_API_KEY or
 VERCEL_OIDC_TOKEN). Explicit kwargs deliberately bypass the env fallback
 chain in `resolve_llm_config` so a request can never inherit the other
-service's credential. The gateway sets mirror the Nebius models exactly
-(same weights, per-service ids): verified `alibaba/qwen-3-235b` ==
-Qwen3-235B-A22B-Instruct-2507 via the gateway catalog; tools=true on all
-serving providers for all four ids.
+service's credential. The gateway set mirrors the Nebius set exactly (same
+weights, per-service ids); tools=true on all serving providers for both ids.
+Only models that solve the entire fixed set are offered: a model that solves
+the 3x3 and then stalls on the 7x7 is worse than useless in a demo, so such
+candidates were removed from the page (see the bake-off in §7).
 
 No trailing slash on the Nebius base URL: `/v1/` + client-appended path
 yields `/v1//chat/completions` → Nebius 404s.
 
 Prices (verified from both live catalogs): Nebius V4 Pro $1.75/$3.50 per M
-in/out; gateway V4 Pro $1.74/$3.48; Nebius Qwen $0.20/$0.60; gateway Qwen
-$0.22/$0.88. Nebius rebrand note: "AI Studio" → "Token Factory"; old host
+in/out; gateway V4 Pro $1.74/$3.48. Nebius rebrand note: "AI Studio" → "Token Factory"; old host
 api.studio.nebius.com still answers as an alias.
 
 ### 5.2 Vercel Python runtime quirks (hard-won)
@@ -316,8 +316,8 @@ Fixed-set evals (2 runs/puzzle unless noted):
 | Gateway Sonnet 4.5 (pre-port) | — | — | — | — | 8/8 |
 | Gateway gpt-4o-mini (1 run) | 67% letters | — | — | — | 0/1 |
 
-Nebius model bake-off (single runs): V4 Pro solved everything tried; Qwen3
-235B 3×3 in 2.5s but 1/4 on the full set (74%/37%/83% letters on the
+Nebius model bake-off (single runs): V4 Pro solved everything tried; a fast non-reasoning candidate solved the
+3×3 in 2.5s but went 1/4 on the full set (74%/37%/83% letters on the
 harder three); nemotron-3-super 2/4; Llama-3.3-70B solved 3×3 in 7 turns;
 gpt-oss-120b failed 3×3 (33% letters). GLM-5.1 solved 5×5-b (2 turns, 54.6s).
 
@@ -410,7 +410,7 @@ Round 1 — max_turns=40, full history (pre-window):
 
 | Model | Wall | Turns | Tokens | Filled | Note |
 |---|---|---|---|---|---|
-| Qwen3-235B | 42.7s | 40 (cap) | 234k | 16/60 | thrash: fill→conflict→clear |
+| second candidate | 42.7s | 40 (cap) | 234k | 16/60 | thrash: fill→conflict→clear |
 | DeepSeek V4 Pro | 282.2s | 40 (cap) | 1.09M | 57/60 | 13 out-of-dictionary |
 
 Agreement 5/60. Cost ≈ $2.40. Diagnosis: quadratic history cost plus too small
@@ -421,8 +421,8 @@ Round 2 — max_turns=160, history_window=48 (cost linear in turns):
 | Model | Wall | Turns | Tokens | Cost | Result |
 |---|---|---|---|---|---|
 | **DeepSeek V4 Pro** | **996.0s** | **98** | **2.44M** | **≈$4.40** | **60/60, submitted, complete** |
-| Qwen3-235B (nudged) | 146.4s | 160 (cap) | 787k | ≈$0.16 | 36/60, incomplete |
-| Qwen3-235B (first try) | 7.1s | 1 | 2.8k | ≈$0.00 | 0/60 — prose exit, see §11.4 |
+| second candidate (nudged) | 146.4s | 160 (cap) | 787k | ≈$0.16 | 36/60, incomplete |
+| second candidate (first try) | 7.1s | 1 | 2.8k | ≈$0.00 | 0/60 — prose exit, see §11.4 |
 | GLM-5.1 | — | — | — | — | stopped by owner; ~27s/turn ⇒ ~1h projected |
 
 - V4 Pro is the headline: it **chose** to call `submit` (not a cap stop) with
@@ -430,7 +430,7 @@ Round 2 — max_turns=160, history_window=48 (cost linear in turns):
   the engine. 80% of its entries appear in `/usr/share/dict/words`; several
   "unknowns" are plausibly abbreviations the dictionary lacks — the puzzle has
   explicit "(abbr.)" clues.
-- Cross-model agreement V4 Pro vs Qwen: 12/60 (20%). Qwen filled only 36
+- Cross-model agreement V4 Pro vs the second candidate: 12/60 (20%). It filled only 36
   slots, so this is weak corroboration and is reported as such.
 - GLM-5.1 was launched as a same-strength second opinion from a different
   model family (the point being that agreement between families is
@@ -456,7 +456,7 @@ does not establish. Both the page and the README state exactly this.
    The model re-syncs anything scrolled out by calling `get_state`.
 2. **Nudge node** (`graph.py`, `AgentState.nudges`). A model that answers in
    prose used to end the run outright, because "no tool calls" meant done —
-   this killed the first 160-turn Qwen attempt at turn 1 with 0/60. The graph
+   this killed the first 160-turn attempt by the second candidate at turn 1 with 0/60. The graph
    now routes a prose reply to a `nudge` node that appends a corrective user
    message and returns to the agent, at most 3 times, so a model that never
    calls tools still terminates. `recursion_limit` raised to
@@ -470,5 +470,5 @@ recovers and solves).
 
 The live page carries a recorded "A real external puzzle" section (not a live
 run — a 13×13 takes ~17 min, which no reviewer will wait through), with the
-V4 Pro numbers, the Qwen shortfall, the GLM pacing decision, and the
+V4 Pro numbers, the other candidate's shortfall, the GLM pacing decision, and the
 encryption guardrail stated plainly. README mirrors it.
