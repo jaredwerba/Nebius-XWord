@@ -357,10 +357,26 @@ from ~420s to 153s; post-trim regression run solved 4/4 in 2/3/2/2 turns
 
 - `main`: everything above.
 - `feature/puzzle-generator`: historical; merged into main (fast-forward).
-- `external` (in progress): importer for third-party puzzles, first target
-  boatloadpuzzles.com daily. Copyright constraint: external puzzle *data*
-  (clues/answers) is fetched at runtime into gitignored paths and is never
-  committed; only importer code ships. Solving model for this experiment:
-  Nebius Qwen (`Qwen/Qwen3-235B-A22B-Instruct-2507`), chosen by the owner;
-  expectation from §7 is imperfect accuracy on a 13×13 — results will be
-  reported as measured.
+- `external`: importer for third-party puzzles (`src/nebius_xword/external.py`
+  + `tests/test_external.py`). First target: a boatloadpuzzles.com 13×13
+  daily. Method: read the **rendered** page only (block layout from
+  `.grect`/`.gblacksquare` divs on a 25px lattice; clue text from
+  `td.cnum`/`td.cfullclue`); the publisher's encrypted answer blob
+  (`puzBody` in `/getcrossword`) is never requested or decoded — that is a
+  deliberate line, not a technical gap. Import self-validates: engine-derived
+  numbering must equal the page's printed clue numbers (60/60 matched).
+  Copyright: puzzle text lives only under gitignored `data/external/`; the
+  repo ships code.
+
+  Measured outcome (2026-08-11, both models on Nebius, max_turns=40, no key
+  so scoring uses audit_fill + cross-model agreement):
+  - Qwen3-235B: 42.7s, hit the turn cap, filled 16/60 slots, 234k tokens,
+    88% of its entries in-dictionary. It thrashes: fills, conflicts, clears.
+  - DeepSeek V4 Pro: 282.2s, hit the turn cap, filled 57/60, 1.09M tokens,
+    77% in-dictionary (13 invented-looking entries).
+  - Cross-model agreement 5/60 (8%) → at least one fill is mostly wrong;
+    plausibly both. Conclusion recorded honestly: a real 13×13 daily is far
+    beyond what this agent solves reliably today; the fixed 3×3–7×7 set is
+    the current competence envelope. Cost of the experiment ≈ $2.40.
+  - Obvious next lever (roadmap): per-clue candidate generation + the
+    engine's own constraint search, instead of one monolithic agent loop.
