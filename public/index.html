@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Nebius-XWord — AI crossword agent</title>
+<title>xWord Agent</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -168,7 +168,7 @@
 <main>
   <header>
     <img src="/nebius-logo.svg" alt="Nebius logo">
-    <h1>XWord — AI crossword agent</h1>
+    <h1>xWord Agent</h1>
   </header>
   <p class="sub">A LangGraph agent that solves crossword puzzles, running on Nebius Token Factory inference. Pick a model to compare it against Vercel AI Gateway.</p>
   <p class="byline">
@@ -187,8 +187,8 @@
         <option value="Qwen/Qwen3-235B-A22B-Instruct-2507">Qwen3 235B (fastest)</option>
       </optgroup>
       <optgroup label="Vercel AI Gateway">
-        <option value="deepseek/deepseek-v4-flash-0731">DeepSeek V4 Flash</option>
         <option value="deepseek/deepseek-v4-pro">DeepSeek V4 Pro</option>
+        <option value="alibaba/qwen-3-235b">Qwen3 235B</option>
       </optgroup>
     </select>
     <button class="primary" id="solve">Solve</button>

@@ -70,10 +70,11 @@ NEBIUS_MODELS = {
     "Qwen/Qwen3-235B-A22B-Instruct-2507",
     "deepseek-ai/DeepSeek-V4-Pro",
 }
+# The gateway side mirrors the Nebius models exactly — the same weights under
+# each service's own id — so every cross-service comparison is apples to apples.
 GATEWAY_MODELS = {
-    "deepseek/deepseek-v4-flash-0731",
-    "deepseek/deepseek-v4-flash",
     "deepseek/deepseek-v4-pro",
+    "alibaba/qwen-3-235b",  # Qwen3-235B-A22B-Instruct-2507, same as the Nebius id
 }
 ALLOWED_MODELS = sorted(NEBIUS_MODELS | GATEWAY_MODELS)
 DEFAULT_MODEL = "deepseek-ai/DeepSeek-V4-Pro"

@@ -4,7 +4,7 @@ Two supported backends, both via ``langchain-openai``'s ChatOpenAI:
 
 - **Vercel AI Gateway** (default): set ``LLM_API_KEY`` (or run on Vercel, where
   the OIDC token is used automatically). Models use gateway slugs like
-  ``deepseek/deepseek-v4-flash-0731``.
+  ``deepseek/deepseek-v4-pro``.
 - **Nebius AI Studio** (direct): set ``NEBIUS_API_KEY``; models use Nebius
   slugs like ``meta-llama/Meta-Llama-3.1-70B-Instruct``.
 
@@ -27,7 +27,7 @@ from .grid import Grid, Puzzle
 from .tools import TOOL_SCHEMAS, ToolExecutor
 
 GATEWAY_BASE_URL = "https://ai-gateway.vercel.sh/v1"
-GATEWAY_DEFAULT_MODEL = "deepseek/deepseek-v4-flash-0731"
+GATEWAY_DEFAULT_MODEL = "deepseek/deepseek-v4-pro"
 # Nebius AI Studio is now called Nebius Token Factory. The old host still
 # answers, but this is the one the console and the docs use. No trailing slash:
 # a client that appends its own path would otherwise produce "/v1//chat/...",

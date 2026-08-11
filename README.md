@@ -68,7 +68,7 @@ model is pinned to the service that runs it.
 | Service | Models on the page | Key |
 |---|---|---|
 | **Nebius Token Factory** (default) | `deepseek-ai/DeepSeek-V4-Pro`, `Qwen/Qwen3-235B-A22B-Instruct-2507` | `NEBIUS_API_KEY` |
-| Vercel AI Gateway | `deepseek/deepseek-v4-flash-0731` | `LLM_API_KEY`, or the Vercel OIDC token |
+| Vercel AI Gateway | `deepseek/deepseek-v4-pro`, `alibaba/qwen-3-235b` | `LLM_API_KEY`, or the Vercel OIDC token |
 
 Nebius AI Studio is now called **Nebius Token Factory**; its host is
 `https://api.tokenfactory.nebius.com/v1`, and you create a key at
@@ -269,7 +269,9 @@ puzzle, 10 August 2026. It solved all 8 runs.
 | example_7x7 | 100% | 100% | 2/2 | 5.5 | 24.9k | 39.5s |
 
 **Vercel AI Gateway, `deepseek/deepseek-v4-flash-0731`** — the same test, run
-earlier. It also solved all 8 runs.
+earlier, when V4 Flash was the page's gateway model. It also solved all 8
+runs. The page now offers the same two models on both services, so this table
+stays as history.
 
 | Puzzle | Letters | Words | Solved | Turns | Tokens |
 |---|---|---|---|---|---|
