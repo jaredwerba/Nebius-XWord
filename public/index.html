@@ -985,5 +985,17 @@ async function init() {
 }
 init();
 </script>
+
+<!-- Vercel Web Analytics and Speed Insights. Both are first-party, cookieless,
+     and collect no personal data. The scripts are served by Vercel itself, so
+     they simply 404 and no-op wherever the feature is not enabled. -->
+<script>
+  window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };
+</script>
+<script defer src="/_vercel/insights/script.js"></script>
+<script>
+  window.si = window.si || function () { (window.siq = window.siq || []).push(arguments); };
+</script>
+<script defer src="/_vercel/speed-insights/script.js"></script>
 </body>
 </html>
