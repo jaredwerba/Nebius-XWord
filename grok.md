@@ -398,3 +398,7 @@ from ~420s to 153s; post-trim regression run solved 4/4 in 2/3/2/2 turns
   - Next lever unchanged: per-clue candidate lists + engine-side constraint
     search; also a cheap second opinion (different model family) to make
     agreement a stronger signal.
+  - GLM-5.1 was started as that second opinion and stopped mid-run by owner
+    decision: at ~27s/turn it projected to ~1h, unusable for a demo. The
+    page and README now present the V4 Pro completion as the headline, with
+    Qwen's shortfall and the GLM pacing stated plainly.

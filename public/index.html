@@ -266,6 +266,35 @@
     <div class="card" id="chart-rows" hidden></div>
   </section>
 
+  <section id="external-section">
+    <h2>A real external puzzle</h2>
+    <p class="chart-note">The sample puzzles above are small, so the agent was
+    pointed at a full newspaper-size crossword: the daily 13×13 from
+    boatloadpuzzles.com, with 60 interlocking entries. The results below are
+    recorded, because a 13×13 is not a wait-and-watch demo.</p>
+    <div class="card">
+      <div class="race-row">
+        <h3>DeepSeek V4 Pro on Nebius — <span class="ratio">completed the full grid</span></h3>
+        <p>The agent filled all 60 entries and chose to submit. The grid
+        engine verified every crossing. It took <strong>98 turns</strong>,
+        <strong>16.6 minutes</strong>, and <strong>2.44 million tokens</strong>
+        — about $4.40 of Nebius inference. A history window keeps the cost
+        linear: without it, a run this long would cost roughly eight times
+        more.</p>
+        <p>Two honest notes. First, the other models fell short:
+        Qwen3 235B filled 36 of 60 entries before its 160-turn budget ran
+        out, and GLM-5.1 works at a pace that would need about an hour, so it
+        was stopped — a demo should not make you wait. Second, the publisher
+        encrypts its answer key, and this project does not break encryption.
+        "Completed" therefore means every entry is filled and every crossing
+        agrees — the engine proves consistency, not the publisher's key.</p>
+        <p class="avg-note">The importer reads only what the puzzle page
+        displays: the block layout and the clue text. Imported puzzle data
+        stays out of the repository. Code and method are in the README.</p>
+      </div>
+    </div>
+  </section>
+
   <section>
     <h2>Technology</h2>
     <div class="tech">

@@ -212,6 +212,34 @@ weights. New races add rows below that average. Treat any single race as one sam
 browser, includes the network and any cold start, and providers share load.
 That honesty is deliberate — the chart shows measurements, not marketing.
 
+## A real external puzzle
+
+The sample puzzles are small, so I pointed the agent at a full
+newspaper-size crossword: the daily 13×13 from boatloadpuzzles.com, with 60
+interlocking entries. `src/nebius_xword/external.py` imports it from what the
+page displays — the block layout and the clue text. The import validates
+itself: the engine derives the slot numbers from the blocks, and all 60
+matched the numbers printed on the page.
+
+**DeepSeek V4 Pro on Nebius completed the full grid and submitted it**: 60 of
+60 entries, every crossing verified by the engine, in 98 turns, 16.6 minutes,
+and 2.44 million tokens — about $4.40 of inference. Two agent improvements
+came out of this run. A history window bounds what the model re-reads each
+turn, which keeps token cost linear instead of quadratic. And a nudge step
+pushes a model back to tool calls when it answers in prose, which is how the
+first Qwen attempt died.
+
+The other models fell short, and I report that plainly. Qwen3 235B filled 36
+of 60 entries before its 160-turn budget ran out. GLM-5.1 works at a pace
+that would need about an hour for this grid, so I stopped it — a demo should
+not make a reviewer wait.
+
+One boundary matters here. The publisher encrypts its answer key, and this
+project does not break encryption. "Completed" therefore means the grid is
+full and every crossing agrees — a strong structural constraint on 60
+interlocking entries, but not a score against the key. Imported puzzle text
+stays out of the repository, because it is the publisher's copyrighted work.
+
 ## Evaluation
 
 Model output varies between runs, so each metric is an average over the runs
