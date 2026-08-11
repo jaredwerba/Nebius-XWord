@@ -106,9 +106,10 @@ Measured on the 3×3 puzzle, the difference between models is large:
 | `meta-llama/Llama-3.3-70B-Instruct` | Solved the 3×3, but took 7 turns to do it. |
 | `openai/gpt-oss-120b` | Failed the 3×3 at 33% of letters. |
 
-Both models on the page are kept for a reason: DeepSeek V4 Pro is the reliable
-one, and Qwen3 235B shows how fast a non-reasoning model answers when the
-puzzle is small.
+The two Nebius models on the page are a deliberate pair: **DeepSeek V4 Pro for
+dependable tool calling** — it solved every sample puzzle — and **Qwen3 235B
+for raw speed**, answering the 3×3 in 2.5 seconds. Speed and tool use pull in
+different directions on Nebius's catalog, and the pair covers both.
 
 ## Install
 
@@ -204,6 +205,16 @@ Pro**, the same weights on both sides, so the clock measures infrastructure
 and not model quality. Two cards stream each agent's moves with their own
 clocks. The verdict names the winner, gives both times and the ratio, and says
 whether both sides solved the puzzle and produced the same grid.
+
+Each race also adds a row to a **Speed comparison** chart on the page: one bar
+for each service, drawn to a shared scale so races stay comparable, with the
+times labeled on the bars.
+
+The Generate button feeds the same race. It builds a puzzle that did not exist
+before — grid by wordlist search, clues by the model — and then both services
+solve it blind, simultaneously. Model parity holds there too: the same
+DeepSeek V4 Pro weights on both sides, and a test pins the page's pair of
+model ids to the server's.
 
 Read the result with care. The clock starts in the browser, so it includes the
 network and any cold start. One race is one sample: providers share load, and

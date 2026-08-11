@@ -133,6 +133,23 @@
   #status.ok::before { content: ""; display: inline-block; width: .65rem; height: .65rem; border-radius: 50%; background: var(--lime); border: 2px solid var(--navy); margin-right: .5rem; vertical-align: baseline; }
   #status.err { border-color: var(--bad); color: var(--bad); }
 
+  /* Speed-comparison chart. Bar fills are validated for contrast and CVD
+     separation on the white card (#7A9E00 is the dark step of the brand lime). */
+  #chart-section { margin-top: 1.25rem; }
+  #chart-section h2 { font-size: 1.05rem; font-weight: 800; margin: 0 0 .3rem; }
+  .chart-note { color: var(--dim); font-size: .85rem; margin: 0 0 .8rem; max-width: 60rem; }
+  .race-row { padding: .95rem 0 .55rem; }
+  .race-row + .race-row { border-top: 1px solid var(--soft); }
+  .race-row h3 { font-size: .92rem; font-weight: 700; margin: 0 0 .55rem; }
+  .race-row h3 .ratio { color: var(--purple); }
+  .bar-line { display: grid; grid-template-columns: 4.2rem 1fr; gap: .6rem; align-items: center; margin-bottom: .4rem; }
+  .bar-label { font-size: .78rem; font-weight: 600; color: var(--dim); text-align: right; }
+  .bar-track { display: flex; align-items: center; gap: .5rem; min-width: 0; }
+  .bar-fill { height: 20px; border-radius: 0 4px 4px 0; min-width: 3px; flex: none; }
+  .bar-fill.nebius { background: #7A9E00; }
+  .bar-fill.vercel { background: var(--purple); }
+  .bar-val { font-size: .8rem; font-weight: 600; color: var(--navy); white-space: nowrap; }
+
   section { margin-top: 3rem; }
   section > h2 { font-size: 1.25rem; font-weight: 800; letter-spacing: -.01em; margin: 0 0 1rem; }
   .tech { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem; }
@@ -175,8 +192,8 @@
       </optgroup>
     </select>
     <button class="primary" id="solve">Solve</button>
-    <button class="ghost" id="generate">✦ Generate a new puzzle, then solve it blind</button>
     <button class="ghost" id="race">⚡ Race: Nebius vs Vercel</button>
+    <button class="ghost" id="generate">✦ Generate a new puzzle & race it blind</button>
   </div>
 
   <div class="layout">
@@ -213,6 +230,14 @@
 
   <div id="status">Pick a puzzle and press Solve.</div>
 
+  <section id="chart-section" hidden>
+    <h2>Speed comparison</h2>
+    <p class="chart-note">Wall-clock time from this browser, same model on both
+    services — shorter is faster. Each race adds a row. One race is one sample:
+    expect the ratio to move between runs.</p>
+    <div class="card" id="chart-rows"></div>
+  </section>
+
   <section>
     <h2>Technology</h2>
     <div class="tech">
@@ -229,9 +254,9 @@
         <p>Press "Generate" and the demo makes a puzzle that did not exist
         before. A backtracking search over a shipped wordlist fills the grid,
         so every entry is a real word and every crossing agrees. The model then
-        writes the clues. The solver starts from an empty grid and receives the
-        clues only — it never sees the answers, so it must solve the puzzle the
-        way a person does. The answer key is used at the end, to score it.</p>
+        writes the clues. Both services then race to solve it blind — each
+        receives the clues only, never the answers. The answer key is used at
+        the end, to score them.</p>
       </div>
       <div class="card">
         <h3><span>Nebius Token Factory</span></h3>
@@ -251,7 +276,7 @@
   </section>
 
   <section>
-    <h2>The assignment, and how this demo answers it</h2>
+    <h2>The assignment, and how Jared extended it</h2>
     <div class="reqs">
       <div class="card">
         <h3>Build an AI agent capable of solving crossword puzzles.</h3>
@@ -283,6 +308,17 @@
         <a href="https://github.com/jaredwerba/Nebius-XWord">github.com/jaredwerba/Nebius-XWord</a>.
         The README shows setup in four commands. The tests run without an API key.
         Pushes to <code>main</code> deploy this page automatically.</p>
+      </div>
+      <div class="card">
+        <h3>Beyond the assignment.</h3>
+        <p>Jared extended the brief in five ways. The page carries Nebius
+        branding — logo, colors, and type. A live log streams every move, with
+        a clock and a time estimate. A generator builds puzzles that did not
+        exist before, and the agent solves them blind. The agent runs on two
+        services: DeepSeek and Qwen on Nebius Token Factory — chosen for tool
+        calling and for speed — and the same DeepSeek weights on Vercel AI
+        Gateway. A race fires both services at once and charts the result, so
+        the speed difference is measured and not claimed.</p>
       </div>
     </div>
   </section>
@@ -635,6 +671,61 @@ function makeCard(side, t0) {
   return card;
 }
 
+// ------------------------------------------------------- speed comparison
+
+const raceHistory = [];
+
+function chartAppend(nebius, vercel) {
+  raceHistory.push({
+    title: current.title,
+    tn: (nebius.end - nebius.t0) / 1000,
+    tv: (vercel.end - vercel.t0) / 1000,
+    n: nebius.payload.stats,
+    v: vercel.payload.stats,
+  });
+  renderChart();
+  $("chart-section").hidden = false;
+}
+
+function renderChart() {
+  // One shared scale across every row, so races stay comparable.
+  const max = Math.max(...raceHistory.flatMap((r) => [r.tn, r.tv]));
+  const rows = $("chart-rows");
+  rows.innerHTML = "";
+  for (const r of [...raceHistory].reverse()) {
+    const winner = r.tn <= r.tv ? "Nebius" : "Vercel";
+    const ratio = (Math.max(r.tn, r.tv) / Math.min(r.tn, r.tv)).toFixed(1);
+    const row = document.createElement("div");
+    row.className = "race-row";
+    const head = document.createElement("h3");
+    head.innerHTML = `${r.title} — <span class="ratio">${winner} ${ratio}× faster</span>`;
+    row.appendChild(head);
+    for (const [label, cls, secs, stats] of [
+      ["Nebius", "nebius", r.tn, r.n],
+      ["Vercel", "vercel", r.tv, r.v],
+    ]) {
+      const line = document.createElement("div");
+      line.className = "bar-line";
+      line.title = `${label}: ${stats.turns} turns · ${stats.tokens} tokens · ${stats.model}`;
+      const name = document.createElement("span");
+      name.className = "bar-label";
+      name.textContent = label;
+      const track = document.createElement("div");
+      track.className = "bar-track";
+      const fill = document.createElement("div");
+      fill.className = "bar-fill " + cls;
+      fill.style.width = ((secs / max) * 100).toFixed(1) + "%";
+      const val = document.createElement("span");
+      val.className = "bar-val";
+      val.textContent = secs.toFixed(1) + "s";
+      track.append(fill, val);
+      line.append(name, track);
+      row.appendChild(line);
+    }
+    rows.appendChild(row);
+  }
+}
+
 function raceVerdict(nebius, vercel) {
   const time = (c) => (c.end - c.t0) / 1000;
   if (!nebius.payload && !vercel.payload) {
@@ -669,19 +760,15 @@ function raceVerdict(nebius, vercel) {
     `${winName} wins — ${winT.toFixed(1)}s vs ${loseT.toFixed(1)}s ` +
     `(${ratio}× faster) · same model (${PAIR.label}) · ${solvedSummary} · ` +
     `grids ${gridsMatch ? "identical" : "differ"}`;
+  chartAppend(nebius, vercel);
 }
 
-async function race() {
-  const buttons = [$("solve"), $("generate"), $("race")];
-  buttons.forEach((b) => (b.disabled = true));
+// The core of the race: both legs fired in the same tick, one shared clock.
+async function runRace(base, statusText) {
   $("single-run").hidden = true;
   $("compare-run").hidden = false;
   $("status").className = "";
-  $("status").textContent = `Racing ${PAIR.label} on both services…`;
-  const base =
-    generated && current.id === generated.id
-      ? { solver: "llm", puzzle: generated }
-      : { solver: "llm", puzzle_id: current.id };
+  $("status").textContent = statusText;
   const t0 = performance.now();
   const nebius = makeCard("nebius", t0);
   const vercel = makeCard("vercel", t0);
@@ -699,24 +786,53 @@ async function race() {
     ]);
   } finally {
     clearInterval(clock);
-    buttons.forEach((b) => (b.disabled = false));
   }
   raceVerdict(nebius, vercel);
 }
 
-// Generation and solving are separate requests so neither has to fit both
-// into one function timeout; to the user it is still a single action.
-const generate = () =>
-  withRun(async () => {
+async function race() {
+  const buttons = [$("solve"), $("generate"), $("race")];
+  buttons.forEach((b) => (b.disabled = true));
+  const base =
+    generated && current.id === generated.id
+      ? { solver: "llm", puzzle: generated }
+      : { solver: "llm", puzzle_id: current.id };
+  try {
+    await runRace(base, `Racing ${PAIR.label} on both services…`);
+  } finally {
+    buttons.forEach((b) => (b.disabled = false));
+  }
+}
+
+// Generation and racing are separate requests so nothing has to fit into one
+// function timeout; to the user it is still a single action: a fresh puzzle
+// appears, and both services race to solve it blind.
+async function generate() {
+  const buttons = [$("solve"), $("generate"), $("race")];
+  buttons.forEach((b) => (b.disabled = true));
+  $("single-run").hidden = false;
+  $("compare-run").hidden = true;
+  $("log").innerHTML = "";
+  $("status").className = "";
+  $("status").textContent = "Building a new puzzle…";
+  startTimer(90);
+  try {
     generated = null;
-    await consume("/api/generate", { model: chosenModel() });
+    await consume("/api/generate", { model: PAIR.nebius });
     if (!generated) {
-      throw new Error("the generator did not finish in time — press generate again");
+      throw new Error("the generator did not finish in time — press the button again");
     }
-    logLine("info", "solving blind — the agent sees the clues, never the answers…");
-    await consume("/api/solve/stream",
-                  { puzzle: generated, solver: "llm", model: chosenModel() });
-  }, { prior: 130, status: "Building a new puzzle, then solving it blind…" });
+    stopTimer("puzzle ready");
+    await runRace({ solver: "llm", puzzle: generated },
+                  `New puzzle ready — racing ${PAIR.label} on both services, blind…`);
+  } catch (err) {
+    stopTimer("failed");
+    $("status").className = "err";
+    $("status").textContent = err.message;
+  } finally {
+    buttons.forEach((b) => (b.disabled = false));
+  }
+}
 
 // The résumé PDF is not in version control, so deployments built from the
 // repo do not carry it. Hide the link rather than show a dead one.
