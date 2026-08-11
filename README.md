@@ -90,8 +90,9 @@ for comparison. To be precise about how:
 |---|---|---|
 | **DeepSeek V4 Pro** (default) | `deepseek-ai/DeepSeek-V4-Pro` | `deepseek/deepseek-v4-pro` |
 | **GLM-5.2** | `zai-org/GLM-5.2` | `zai/glm-5.2` |
+| **Kimi K2.7 Code** | `moonshotai/Kimi-K2.7-Code` | `moonshotai/kimi-k2.7-code` |
 
-Two models, each on both services, so the dropdown lists four ids. Choosing an
+Three models, each on both services, so the dropdown lists six ids. Choosing an
 id also chooses the service that serves it. Prices are near-identical across
 services (V4 Pro is $1.75/$3.50 per million on Nebius against $1.74/$3.48 on
 the gateway), which is what makes the race below a clean comparison.
@@ -136,7 +137,7 @@ services × 4 puzzles × 2 runs = 80 solves):
 | `zai-org/GLM-5.2` | 8/8 both services. **On the page.** |
 | `moonshotai/Kimi-K2.6` | 8/8 both, but a 7×7 took 330s on the gateway — past the 300s function limit, so it would time out in production. |
 | `zai-org/GLM-5.1` | 8/8 both, but ~235s a puzzle on each service. Too slow to watch. |
-| `moonshotai/Kimi-K2.7-Code` | 8/8 both, and safe on time — but it is the one model the gateway wins, and it is code-specialised. |
+| `moonshotai/Kimi-K2.7-Code` | 8/8 both services. **On the page.** Slowest of the three, and its gateway leg is erratic — see the race note. |
 | `nvidia/Nemotron-3-Ultra-550b-a55b` | 7/8 — failed the wordplay 5×5 on the gateway. |
 | `MiniMaxAI/MiniMax-M2.5` | Ran out of turns on the 7×7 at 90% of letters. |
 | `MiniMaxAI/MiniMax-M3` | Gave up on the 7×7 at 0%. |
@@ -277,8 +278,22 @@ Measured on the 7×7, one race at a time so the timings are uncontended:
 |---|---|---|---|
 | DeepSeek V4 Pro | 17.2s | 101.1s | Nebius 5.9× faster |
 | GLM-5.2 | 42.7s | 159.8s | Nebius 3.7× faster |
+| Kimi K2.7 Code | 107–135s | 73–494s | Nebius won 3 of 4 races |
 
-Both models solved the grid on both services in those runs.
+Every run above solved the grid on both services.
+
+The Kimi row earns its own paragraph, because it taught me something about my
+own measurements. Its first race was the only one in this whole project that
+the gateway won — 73.5s against 113.7s. I nearly published that as a finding.
+Three repeat races then went to Nebius by 4.6×, 1.4× and 2.5×, so the single
+result was an outlier, not a fact. It is in the table as a range for that
+reason.
+
+That model is also the slowest of the three, and its gateway leg is erratic:
+one race took 494s. The hosted demo caps a function at 300 seconds, so a Kimi
+race on the 7×7 can show "Vercel did not finish" — the page reports that
+plainly and still gives you the Nebius time. Use DeepSeek V4 Pro or GLM-5.2
+for a quick demonstration, and Kimi when you want to see the variance.
 
 Each race adds a row to a Speed comparison chart: one bar per service, on a
 shared scale, with the times on the bars. I chose a two-bar chart because the

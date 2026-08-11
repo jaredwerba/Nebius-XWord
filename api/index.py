@@ -69,12 +69,14 @@ def get_puzzle(puzzle_id: str) -> Puzzle:
 NEBIUS_MODELS = {
     "deepseek-ai/DeepSeek-V4-Pro",
     "zai-org/GLM-5.2",
+    "moonshotai/Kimi-K2.7-Code",
 }
 # The gateway side mirrors the Nebius models exactly — the same weights under
 # each service's own id — so every cross-service comparison is apples to apples.
 GATEWAY_MODELS = {
     "deepseek/deepseek-v4-pro",
     "zai/glm-5.2",
+    "moonshotai/kimi-k2.7-code",
 }
 ALLOWED_MODELS = sorted(NEBIUS_MODELS | GATEWAY_MODELS)
 DEFAULT_MODEL = "deepseek-ai/DeepSeek-V4-Pro"
@@ -94,6 +96,11 @@ COMPARE_PAIRS = [
         "label": "GLM-5.2",
         "nebius": "zai-org/GLM-5.2",
         "gateway": "zai/glm-5.2",
+    },
+    {
+        "label": "Kimi K2.7 Code",
+        "nebius": "moonshotai/Kimi-K2.7-Code",
+        "gateway": "moonshotai/kimi-k2.7-code",
     },
 ]
 COMPARE_PAIR = COMPARE_PAIRS[0]  # the default the page opens on
