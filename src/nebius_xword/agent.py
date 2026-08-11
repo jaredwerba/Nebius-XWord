@@ -33,7 +33,7 @@ GATEWAY_DEFAULT_MODEL = "deepseek/deepseek-v4-pro"
 # a client that appends its own path would otherwise produce "/v1//chat/...",
 # which Nebius answers with a 404.
 NEBIUS_BASE_URL = "https://api.tokenfactory.nebius.com/v1"
-NEBIUS_DEFAULT_MODEL = "Qwen/Qwen3-235B-A22B-Instruct-2507"
+NEBIUS_DEFAULT_MODEL = "deepseek-ai/DeepSeek-V4-Pro"  # matches the page default
 
 SYSTEM_PROMPT = """\
 You are Nebius-XWord, an expert crossword solver.

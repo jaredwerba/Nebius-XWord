@@ -1,8 +1,8 @@
 """Evaluation harness: run a solver over a directory of puzzles and report metrics.
 
-Usage (from the repo root):
-    PYTHONPATH=src python3 -m eval.run_eval --solver oracle
-    PYTHONPATH=src python3 -m eval.run_eval --solver llm --runs 3
+Usage (from the repo root, after `pip install -e ".[dev]"`):
+    python -m eval.run_eval --solver oracle          # no API key needed
+    python -m eval.run_eval --solver llm --runs 3    # needs a key in .env
 
 Solvers:
     empty      leave the grid blank (floor / harness sanity check)

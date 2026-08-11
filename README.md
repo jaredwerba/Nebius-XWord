@@ -130,37 +130,86 @@ Qwen3 235B gives raw speed. The two goals pull in different directions on this
 catalog, and the pair covers both. I documented the failures as well as the
 successes, because the failures are what a colleague needs to know.
 
-## Install
+## Run it yourself
+
+Requires Python 3.10 or newer. Run every command from the repository root.
+
+### 1. Install
 
 ```bash
+git clone https://github.com/jaredwerba/Nebius-XWord.git
+cd Nebius-XWord
 python3 -m venv .venv
-source .venv/bin/activate
+source .venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install -e ".[dev]"
+```
+
+### 2. Check it works — no API key needed
+
+These three commands need no key and no network. Run them first to prove the
+install is good.
+
+```bash
+pytest                                    # 65 tests
+python -m eval.run_eval --solver oracle   # must print 100% everywhere
+python -m eval.run_eval --solver empty    # must print 0% everywhere
+```
+
+### 3. Add a key
+
+```bash
 cp .env.example .env
 ```
 
-Then put your Nebius key, or an AI Gateway key, in `.env`.
+Open `.env` and set **one** of these:
 
-## Run
+- `NEBIUS_API_KEY` — get one at <https://tokenfactory.nebius.com>. This is the
+  default path, and the one all the results below use.
+- `LLM_API_KEY` — a Vercel AI Gateway key, if you prefer that provider.
 
-Solve one puzzle from the command line. The output shows each tool call, the
-final grid, and the score.
+### 4. Solve a puzzle
 
 ```bash
 python scripts/solve.py data/puzzles/example_mini_5x5.json
 ```
 
-Start the web page, then open <http://127.0.0.1:8000>.
+It prints each tool call as the agent makes it, then the finished grid, the
+model, the turns, the tokens, and the score:
+
+```
+model: deepseek-ai/DeepSeek-V4-Pro | turns: 2 | tokens: 3541 | submitted: True
+score: {'letter_accuracy': 1.0, 'word_accuracy': 1.0, 'solved': True}
+```
+
+Add `--model <id>` to pick a model, or `--quiet` to hide the trace.
+
+### 5. Score the agent on the whole puzzle set
+
+```bash
+python -m eval.run_eval --solver llm --runs 3
+```
+
+See [Evaluation methodology](#evaluation-methodology) for what the numbers
+mean.
+
+### 6. Run the web app
 
 ```bash
 uvicorn api.index:app --reload
 ```
 
-Score the agent on every puzzle in `data/puzzles/`:
+Open <http://127.0.0.1:8000>. Press Solve to watch the agent work, Race to
+run two providers at once, or Generate to build a new puzzle and race it
+blind.
 
-```bash
-python -m eval.run_eval --solver llm --runs 3
-```
+### Troubleshooting
+
+| Symptom | Cause and fix |
+|---|---|
+| `ModuleNotFoundError: nebius_xword` | The install step did not run, or the virtual environment is not active. Re-run `pip install -e ".[dev]"`. |
+| `401` from the model provider | The key in `.env` is missing, wrong, or expired. Only one of `NEBIUS_API_KEY` or `LLM_API_KEY` is needed. |
+| `model must be one of [...]` | The hosted demo restricts models by design. Locally, use `--model` with any id your provider serves. |
+| A solve stops early with an unfinished grid | The turn cap was reached. Raise it in `CrosswordAgent(max_turns=...)`; big puzzles need more turns. |
 
 ## New puzzles, solved blind
 
@@ -240,35 +289,115 @@ full and every crossing agrees — a strong structural constraint on 60
 interlocking entries, but not a score against the key. Imported puzzle text
 stays out of the repository, because it is the publisher's copyrighted work.
 
-## Evaluation
+## Evaluation methodology
 
-Model output varies between runs, so each metric is an average over the runs
-you request:
+This is the deliverable I care most about, because "the agent solved it" is
+easy to claim and hard to trust. The harness is `eval/run_eval.py`, and the
+scoring is `eval/metrics.py`.
 
-- **Letter accuracy.** Correct open cells over total open cells. Partial
-  credit.
-- **Word accuracy.** Correct slots over total slots. An almost-right answer
-  breaks its crossings, and this metric punishes that.
-- **Solved rate.** Runs that produce a fully correct grid.
-- **Cost.** Mean turns and tokens per solve.
+### What I measure, and why
 
-Four solvers bracket the score, and two of them also prove the harness:
+Each metric answers a different question. I report all four, because any one
+of them alone can flatter the agent.
 
-| Solver | What it does | Expected score |
+| Metric | Definition | Why it is here |
 |---|---|---|
-| `empty` | Leaves the grid blank. | 0% — the floor |
-| `backtrack` | Fits real words, ignores the clues. | about 10% of letters |
-| `llm` | The agent under test. | — |
-| `oracle` | Copies the answer key. | 100% — the ceiling |
+| **Letter accuracy** | correct open cells ÷ total open cells | Partial credit. Shows progress when the grid is close but not finished. |
+| **Word accuracy** | fully correct slots ÷ total slots | Stricter. One wrong letter voids the whole entry, which is how a crossword actually works. |
+| **Solved rate** | runs with a fully correct grid ÷ runs | The headline. A crossword is a pass-or-fail artifact. |
+| **Cost** | mean turns and tokens per solve | Quality at any price is not a result. This is what makes it an engineering number. |
 
-The gap between `backtrack` and `llm` isolates clue understanding. That gap is
-the thing the assignment actually asks about, so I built a baseline to expose
-it.
+Letter accuracy and word accuracy can disagree sharply, and the gap is
+informative. A model that guesses plausible words with one wrong letter each
+scores well on letters and near zero on words. That is exactly the failure
+`openai/gpt-4o-mini` produced on the 3×3 — 67% of letters, 33% of words.
 
-The puzzle set has four hand-checked puzzles: a 3×3, two 5×5s (one plain, one
-with wordplay), and a 7×7 pinwheel. Tests validate the numbering, the clue
-coverage, and each answer key. The set is small, English-only, and has no
-themed puzzles — read the numbers as an indication, not proof.
+### How to reproduce it
+
+No API key is needed for the first two commands.
+
+```bash
+python -m eval.run_eval --solver oracle      # must print 100% everywhere
+python -m eval.run_eval --solver empty       # must print 0% everywhere
+python -m eval.run_eval --solver backtrack   # about 9% of letters
+python -m eval.run_eval --solver llm --runs 3
+```
+
+Output looks like this:
+
+```
+solver: oracle | runs per puzzle: 1
+
+puzzle                letters    words   solved
+example_3x3             100%     100%     1/1
+example_5x5_b           100%     100%     1/1
+example_7x7             100%     100%     1/1
+example_mini_5x5        100%     100%     1/1
+
+mean / total            100%     100%     4/4
+```
+
+Add `--json` for machine-readable output, `--model <id>` to test one model,
+and `--puzzles <dir>` to point at your own puzzles.
+
+### Baselines: bracketing the score, and testing the test
+
+Four solvers run through the same scoring code. Two of them exist to prove
+the harness is not lying.
+
+| Solver | What it does | Expected | Purpose |
+|---|---|---|---|
+| `empty` | Leaves the grid blank. | 0% | Floor. If this is not 0, the scorer is broken. |
+| `backtrack` | Fits real dictionary words, ignores the clues. | ~9% letters | Structure-only baseline. |
+| `llm` | The agent under test. | — | The measurement. |
+| `oracle` | Copies the answer key. | 100% | Ceiling. If this is not 100, the scorer is broken. |
+
+`backtrack` is the baseline I think matters most. It fills the grid with real
+words that interlock correctly, and it never reads a clue. It scores about 9%
+of letters. Any score above that line is the part the language model
+contributed by understanding clues. Without this baseline, a grid full of
+valid-looking words could be mistaken for comprehension.
+
+### How to read the numbers
+
+- **Repeat the runs.** Model output is not deterministic. `--runs 3` is the
+  minimum I trust for a comparison; single runs are for smoke tests.
+- **Four puzzles is a small sample.** These results indicate capability. They
+  do not establish a statistically tight ranking between two strong models.
+- **Both services solve every fixed puzzle**, so on this set accuracy does not
+  separate them. Speed does. That is a limit of the puzzle set, not a finding
+  about the models.
+
+### Evaluating without an answer key
+
+A real newspaper puzzle does not ship its solution, so `score_grid` cannot
+run. `src/nebius_xword/external.py` provides two substitutes:
+
+- **`audit_fill`** reports completeness (are all slots filled), crossing
+  consistency (the engine verifies every shared letter), and the share of
+  entries that appear in a reference dictionary, with the unknown words
+  listed.
+- **`compare_fills`** reports per-slot agreement between two independent
+  solves. Agreement between different model families is weak evidence of
+  correctness; disagreement localises exactly which entries are contested.
+
+This is a deliberately weaker claim than a keyed score, and the README says so
+wherever those numbers appear.
+
+### What this does not measure
+
+Being explicit about the edges: the harness does not judge clue quality on
+generated puzzles, does not handle themed or rebus puzzles, is English-only,
+and assumes each answer key is the single correct solution. Solve latency is
+measured separately by the race, because it depends on the provider rather
+than on the agent.
+
+### The puzzle set
+
+Four hand-checked puzzles: a 3×3 smoke test, two 5×5s (one plain, one with
+wordplay), and a 7×7 pinwheel. Every puzzle carries an answer key, and the
+test suite validates the numbering, the clue coverage, and the key itself, so
+a malformed puzzle fails CI rather than quietly scoring badly.
 
 ## Results
 
@@ -313,11 +442,12 @@ behavior.
 pytest
 ```
 
-58 tests, and none needs an API key or the network. A scripted fake model
+65 tests, and none needs an API key or the network. A scripted fake model
 drives the whole LangGraph loop offline, so the stop rules, the token counts,
-and the tool dispatch are tested on every run. Other tests pin the page's
-model ids to the server's, so the dropdown and the allowlist cannot drift
-apart silently.
+the history window, and the tool dispatch are tested on every run. Other
+tests pin the page's model ids to the server's, so the dropdown and the
+allowlist cannot drift apart silently. The importer is covered with synthetic
+fixtures, so no third-party puzzle is needed to test it.
 
 ## Deployment
 
