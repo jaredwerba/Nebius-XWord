@@ -173,10 +173,10 @@
     <img src="/nebius-logo.svg" alt="Nebius logo">
     <h1>xWord Agent</h1>
   </header>
-  <p class="sub">A LangGraph agent that solves crossword puzzles, running on Nebius Token Factory inference. Pick a model to compare it against Vercel AI Gateway.</p>
+  <p class="sub">A tool-using LangGraph agent that solves crossword puzzles on Nebius Token Factory inference. Race the same open weights against Vercel AI Gateway, generate a fresh puzzle, or read how a real 13×13 completed.</p>
   <p class="byline">
     <strong>Jared Werba</strong> <span class="sep">·</span> FDE Candidate
-    <span class="sep">·</span> August 10, 2026 <span class="sep">·</span>
+    <span class="sep">·</span> August 11, 2026 <span class="sep">·</span>
     <a href="mailto:werba@protonmail.com">werba@protonmail.com</a>
     <span class="sep resume-only">·</span>
     <a class="chip resume-only" href="/jared-werba-resume.pdf" target="_blank" rel="noopener">Résumé (PDF)</a>
@@ -299,35 +299,45 @@
     <h2>Technology</h2>
     <div class="tech">
       <div class="card">
-        <h3><span>LangGraph</span></h3>
-        <p>LangGraph runs the agent loop as a small graph. One node calls the model.
-        One node applies the model's moves to the grid. The graph stops when the
-        model submits the grid, or when the turn limit is reached. A deterministic
-        Python grid engine validates every letter, so the model is never trusted
-        about grid state — only about answers.</p>
+        <h3><span>LangGraph + tools</span></h3>
+        <p>The model only acts through four tools —
+        <code>get_state</code>, <code>fill_slot</code>, <code>clear_slot</code>,
+        <code>submit</code>. LangGraph is the control plane: one node calls the
+        model, one runs tools against the live grid. The run ends on submit, when
+        the model stops calling tools, after a few nudges if it answers in prose,
+        or at the turn limit. A separate deterministic Python grid engine checks
+        every letter on fill; rejected crossings never update the board. The model
+        proposes answers; the engine owns state. A history window keeps long runs
+        affordable (linear in turns, not quadratic).</p>
       </div>
       <div class="card">
         <h3><span>Puzzle generation</span></h3>
-        <p>Press "Generate" and the demo makes a puzzle that did not exist
-        before. A backtracking search over a shipped wordlist fills the grid,
-        so every entry is a real word and every crossing agrees. The model then
-        writes the clues. Both services then race to solve it blind — each
-        receives the clues only, never the answers. The answer key is used at
-        the end, to score them.</p>
+        <p>Press Generate and the demo builds a puzzle that did not exist before.
+        Backtracking over a shipped wordlist fills a template so every entry is a
+        real word and every crossing agrees. DeepSeek V4 Pro on Nebius then writes
+        the clues, with a check that clues do not leak their answers. Both
+        services race the new puzzle blind — each run gets the empty grid and
+        clues only; the answer key is used afterward to score. Generation and
+        solving are separate requests so each stays under the function timeout.</p>
       </div>
       <div class="card">
         <h3><span>Nebius Token Factory</span></h3>
-        <p>Nebius serves the models the agent uses by default. It speaks the
-        OpenAI chat API, so the same client code reaches it with only a change of
-        host and key. DeepSeek V4 Pro on Nebius solves every sample puzzle. One
-        puzzle costs a few cents.</p>
+        <p>Nebius is the default inference path. It speaks the OpenAI chat API, so
+        the same agent client changes only host and key. DeepSeek V4 Pro on Nebius
+        solves every fixed sample puzzle end-to-end. In four recorded races against
+        the same weights on Vercel AI Gateway, Nebius averaged <strong>17.5s</strong>
+        vs <strong>53.7s</strong> wall-clock (~3×, often in a 2–4× range). Only
+        tool-capable models are offered here — Nebius V4 Flash has no tools and
+        cannot drive this agent.</p>
       </div>
       <div class="card">
         <h3><span>Two services, one agent</span></h3>
-        <p>The dropdown selects the model, and each model is pinned to the
-        service that runs it: Nebius Token Factory, or Vercel AI Gateway. Nothing
-        else changes between them. Use it to compare the same agent, on the same
-        puzzle, across two providers.</p>
+        <p>Each dropdown model is pinned to one service: Nebius Token Factory or
+        Vercel AI Gateway. Tools, LangGraph loop, grid engine, and puzzle stay the
+        same; only the endpoint and model id change. Fair pairs use the same open
+        weights (DeepSeek V4 Pro or Qwen3 235B). Solve one provider at a time, or
+        press Race / Generate to fire both at once and chart client-measured
+        wall time.</p>
       </div>
     </div>
   </section>
@@ -337,45 +347,56 @@
     <div class="reqs">
       <div class="card">
         <h3>Build an AI agent capable of solving crossword puzzles.</h3>
-        <p>We gave a language model four tools: <code>get_state</code>,
-        <code>fill_slot</code>, <code>clear_slot</code>, and <code>submit</code>.
-        The model reads the clues and proposes answers. The grid engine checks
-        every letter and rejects answers that break crossing words. The model sees
-        each rejection and corrects itself. The loop ends when the model submits a
-        complete, consistent grid.</p>
+        <p>A language model never rewrites the board as free text. It only calls
+        four tools — <code>get_state</code>, <code>fill_slot</code>,
+        <code>clear_slot</code>, and <code>submit</code> — inside a multi-turn
+        LangGraph loop. <code>get_state</code> returns the live grid, numbered
+        slots, clues, and partial patterns. <code>fill_slot</code> proposes one
+        answer; the grid engine checks length and every cell against crossings and
+        rejects conflicts without updating the board. The model sees each
+        rejection as a tool result and revises. The run ends on
+        <code>submit</code>, when the model stops calling tools, or at the turn
+        limit. The model is trusted for answers only; the engine owns grid state.</p>
       </div>
       <div class="card">
         <h3>A working implementation of the agent.</h3>
-        <p>This page is the working agent. Select a puzzle, press Solve, and watch
-        the log. The agent solves all four sample puzzles with 100% accuracy. You
-        can also run it locally from the command line — the README shows how.</p>
+        <p>This page is the working agent. Select a fixed sample, press Solve, and
+        watch the log and the grid fill. On DeepSeek V4 Pro, the agent solves all
+        four samples at 100% letter and word accuracy on live inference (Nebius and
+        gateway paths). A separate section records a full 13×13 external daily:
+        completed and crossing-consistent, without the publisher's answer key. You
+        can also run the agent from the command line — the README shows how.</p>
       </div>
       <div class="card">
         <h3>A proposed evaluation methodology for measuring the quality of its solutions.</h3>
-        <p>We measure three things: letter accuracy, word accuracy, and solved
-        rate. We repeat each run, because model output varies. Baselines bracket
-        the score: an empty grid scores 0%, the answer key scores 100%, and a
-        wordlist filler that ignores clues scores about 10%. The gap between that
-        filler and the agent isolates real clue understanding. We also record
-        turns and token cost per solve.</p>
+        <p>We measure letter accuracy, word accuracy, and solved rate, averaged
+        over repeated runs because model output varies. Baselines bracket the
+        score: an empty grid scores 0% (floor), the answer key scores 100%
+        (oracle ceiling), and a wordlist filler that ignores clues scores about 9%
+        letters (structure only). The gap between that filler and the agent
+        isolates clue understanding. We also record turns and token cost per solve.
+        Fixed samples are small by design; the external 13×13 reports completion
+        and engine consistency, not a keyed accuracy claim.</p>
       </div>
       <div class="card">
         <h3>A GitHub repository containing the source code and clear instructions for running the project.</h3>
         <p>The code is public at
         <a href="https://github.com/jaredwerba/Nebius-XWord">github.com/jaredwerba/Nebius-XWord</a>.
-        The README shows setup in four commands. The tests run without an API key.
-        Pushes to <code>main</code> deploy this page automatically.</p>
+        The README shows setup in four commands. Offline tests run without an API
+        key (grid, tools graph, generator, API, importer). Pushes to
+        <code>main</code> deploy this page automatically. Imported external puzzle
+        text is not committed — only the importer code ships.</p>
       </div>
       <div class="card">
         <h3>Beyond the assignment.</h3>
-        <p>Jared extended the brief in five ways. The page carries Nebius
-        branding — logo, colors, and type. A live log streams every move, with
-        a clock and a time estimate. A generator builds puzzles that did not
-        exist before, and the agent solves them blind. The agent runs on two
-        services: DeepSeek and Qwen on Nebius Token Factory — chosen for tool
-        calling and for speed — and the same DeepSeek weights on Vercel AI
-        Gateway. A race fires both services at once and charts the result, so
-        the speed difference is measured and not claimed.</p>
+        <p>Jared extended the brief in six ways. The page carries Nebius branding —
+        logo, colors, and type. A live log streams every move, with a clock and
+        ETA. A generator builds new puzzles and races both services blind. The
+        agent runs on two services with the same open weights held constant, so
+        latency is measured and not claimed (~3× Nebius vs gateway on recorded
+        DeepSeek V4 Pro races). An importer reads a real 13×13 daily from the
+        rendered page only (no encrypted answer blob), and DeepSeek V4 Pro on
+        Nebius submitted a complete, crossing-consistent 60-slot grid.</p>
       </div>
     </div>
   </section>
