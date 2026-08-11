@@ -6,6 +6,9 @@ public/jared-werba-resume.pdf
 public/jared-werba-pitch.mp4
 public/nebius.mov
 
+# Personal working notes, not part of the project
+FDEPitch.md
+
 # Python
 __pycache__/
 *.pyc
