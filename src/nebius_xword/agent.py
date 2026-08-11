@@ -128,6 +128,7 @@ class CrosswordAgent:
         max_turns: int = 24,
         verbose: bool = False,
         *,
+        history_window: int = 48,
         chat_model=None,
     ):
         """``chat_model`` injects a pre-built LangChain chat model (tests)."""
@@ -137,6 +138,7 @@ class CrosswordAgent:
         else:
             self._model = build_chat_model(model, api_key, base_url).bind_tools(TOOL_SCHEMAS)
         self.max_turns = max_turns
+        self.history_window = history_window
         self.verbose = verbose
 
     def solve(self, puzzle: Puzzle) -> SolveResult:
@@ -156,7 +158,11 @@ class CrosswordAgent:
         """
         executor = ToolExecutor(puzzle)
         graph = build_solver_graph(
-            self._model, executor, max_turns=self.max_turns, verbose=self.verbose
+            self._model,
+            executor,
+            max_turns=self.max_turns,
+            history_window=self.history_window,
+            verbose=self.verbose,
         )
         init = {
             "messages": [

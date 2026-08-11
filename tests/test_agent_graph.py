@@ -127,6 +127,27 @@ def test_tool_error_keeps_loop_alive(puzzle):
     assert executor.submitted is True  # loop survived the error and continued
 
 
+def test_window_keeps_head_and_recent_tail():
+    from langchain_core.messages import HumanMessage, SystemMessage
+
+    from nebius_xword.graph import window_messages
+
+    head = [SystemMessage(content="sys"), HumanMessage(content="grid")]
+    body = []
+    for i in range(10):
+        body.append(ai_turn([tool_call("get_state", {}, f"c{i}")]))
+        body.append(ToolMessage(content="{}", tool_call_id=f"c{i}", name="get_state"))
+    msgs = head + body
+
+    out = window_messages(msgs, keep_last=5)
+    assert out[:2] == head  # system prompt and initial grid always survive
+    assert len(out) <= 2 + 5
+    assert not isinstance(out[2], ToolMessage)  # no orphaned tool result after cut
+
+    assert window_messages(msgs, keep_last=100) == msgs  # short histories untouched
+    assert window_messages(msgs, keep_last=0) == msgs  # zero disables the window
+
+
 def test_stream_yields_progress_events_and_result(puzzle):
     fake = GenericFakeChatModel(messages=iter(SOLVE_3X3_SCRIPT))
     events = list(CrosswordAgent(chat_model=fake).stream(puzzle))
