@@ -86,14 +86,18 @@ for comparison. To be precise about how:
   point: it makes every cross-service comparison a comparison of
   infrastructure, not of models.
 
-| Service | Model id on the page | Price in/out per 1M tokens | Key |
-|---|---|---|---|
-| **Nebius Token Factory** (default) | `deepseek-ai/DeepSeek-V4-Pro` | $1.75 / $3.50 | `NEBIUS_API_KEY` |
-| Vercel AI Gateway | `deepseek/deepseek-v4-pro` | $1.74 / $3.48 | `LLM_API_KEY`, or the Vercel OIDC token |
+| Model | Nebius id | Vercel id |
+|---|---|---|
+| **DeepSeek V4 Pro** (default) | `deepseek-ai/DeepSeek-V4-Pro` | `deepseek/deepseek-v4-pro` |
+| **GLM-5.2** | `zai-org/GLM-5.2` | `zai/glm-5.2` |
 
-The dropdown on the page lists these two ids. Choosing an id therefore also
-chooses the service that serves it. The model costs almost the same on both
-services, which makes the race below a clean comparison.
+Two models, each on both services, so the dropdown lists four ids. Choosing an
+id also chooses the service that serves it. Prices are near-identical across
+services (V4 Pro is $1.75/$3.50 per million on Nebius against $1.74/$3.48 on
+the gateway), which is what makes the race below a clean comparison.
+
+Keys: `NEBIUS_API_KEY` for Nebius, and `LLM_API_KEY` or the Vercel OIDC token
+for the gateway.
 
 Nebius AI Studio is now called **Nebius Token Factory**. Its host is
 `https://api.tokenfactory.nebius.com/v1`, and keys come from
@@ -117,19 +121,37 @@ before it could fail in production.
 
 I then ran candidates on the sample puzzles:
 
-| Model | Result |
+A model earns a place on the page only if it solves **every** fixed puzzle,
+**twice**, on **both** services — 8 of 8 each side. One good run is not
+evidence: a model that wins the 3×3 and stalls on the 7×7 looks fast right up
+until the grid does not finish, which is worse than useless in a demo.
+
+Thirteen models exist on both catalogs with tool support. I screened them on
+the 7×7, then ran the survivors through the full matrix (5 models × 2
+services × 4 puzzles × 2 runs = 80 solves):
+
+| Model | Verdict |
 |---|---|
-| `deepseek-ai/DeepSeek-V4-Pro` | Solved every puzzle. My default. |
+| `deepseek-ai/DeepSeek-V4-Pro` | 8/8 both services. **On the page.** |
+| `zai-org/GLM-5.2` | 8/8 both services. **On the page.** |
+| `moonshotai/Kimi-K2.6` | 8/8 both, but a 7×7 took 330s on the gateway — past the 300s function limit, so it would time out in production. |
+| `zai-org/GLM-5.1` | 8/8 both, but ~235s a puzzle on each service. Too slow to watch. |
+| `moonshotai/Kimi-K2.7-Code` | 8/8 both, and safe on time — but it is the one model the gateway wins, and it is code-specialised. |
+| `nvidia/Nemotron-3-Ultra-550b-a55b` | 7/8 — failed the wordplay 5×5 on the gateway. |
+| `MiniMaxAI/MiniMax-M2.5` | Ran out of turns on the 7×7 at 90% of letters. |
+| `MiniMaxAI/MiniMax-M3` | Gave up on the 7×7 at 0%. |
+| `Qwen/Qwen3-Next-80B-A3B-Thinking` | 98% of letters, but 332s for one puzzle. |
 | `nvidia/nemotron-3-super-120b-a12b` | Solved the two smaller puzzles only. |
 | `meta-llama/Llama-3.3-70B-Instruct` | Solved the 3×3, but needed 7 turns. |
 | `openai/gpt-oss-120b` | Failed the 3×3 at 33% of letters. |
 
-Only DeepSeek V4 Pro solves the whole set, so it is the only model the page
-offers. Several faster or cheaper models solve the 3×3 and then fail a 7×7,
-which is worse than useless in a demo: the speed looks good until the grid
-does not finish. I measured the candidates rather than guessing, and I record
-the failures as well as the winner, because the failures are what a colleague
-needs to know.
+One earlier lesson is in that list. A fast model was on the page for a while
+because it solved the small puzzles quickly. On a 7×7 it filled every square
+and still could not resolve the crossings, burning its whole turn budget. It
+is gone. Speed is only worth having after correctness.
+
+I record the failures as well as the winners, because the failures are what a
+colleague needs to know.
 
 ## Run it yourself
 
@@ -244,10 +266,19 @@ measurement.
 
 The Race button answers one question: with the model held constant, which
 service returns the answer sooner? The browser fires two identical requests in
-the same tick. Both run DeepSeek V4 Pro — the same weights under each
-service's id — so the clocks compare infrastructure. Two cards stream the
-moves with their own timers. The verdict names the winner, both times, the
-ratio, and whether both grids agree.
+the same tick, both running whichever model the dropdown has selected, under
+each service's own id — the same weights on both sides, so the clocks compare
+infrastructure. Two cards stream the moves with their own timers. The verdict
+names the winner, both times, the ratio, and whether both grids agree.
+
+Measured on the 7×7, one race at a time so the timings are uncontended:
+
+| Model | Nebius | Vercel | Result |
+|---|---|---|---|
+| DeepSeek V4 Pro | 17.2s | 101.1s | Nebius 5.9× faster |
+| GLM-5.2 | 42.7s | 159.8s | Nebius 3.7× faster |
+
+Both models solved the grid on both services in those runs.
 
 Each race adds a row to a Speed comparison chart: one bar per service, on a
 shared scale, with the times on the bars. I chose a two-bar chart because the

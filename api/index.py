@@ -68,11 +68,13 @@ def get_puzzle(puzzle_id: str) -> Puzzle:
 # The service that serves each model is implied by which set it belongs to.
 NEBIUS_MODELS = {
     "deepseek-ai/DeepSeek-V4-Pro",
+    "zai-org/GLM-5.2",
 }
 # The gateway side mirrors the Nebius models exactly — the same weights under
 # each service's own id — so every cross-service comparison is apples to apples.
 GATEWAY_MODELS = {
     "deepseek/deepseek-v4-pro",
+    "zai/glm-5.2",
 }
 ALLOWED_MODELS = sorted(NEBIUS_MODELS | GATEWAY_MODELS)
 DEFAULT_MODEL = "deepseek-ai/DeepSeek-V4-Pro"
@@ -87,6 +89,11 @@ COMPARE_PAIRS = [
         "label": "DeepSeek V4 Pro",
         "nebius": "deepseek-ai/DeepSeek-V4-Pro",
         "gateway": "deepseek/deepseek-v4-pro",
+    },
+    {
+        "label": "GLM-5.2",
+        "nebius": "zai-org/GLM-5.2",
+        "gateway": "zai/glm-5.2",
     },
 ]
 COMPARE_PAIR = COMPARE_PAIRS[0]  # the default the page opens on

@@ -202,9 +202,11 @@
     <select id="model" title="Which model solves, and whose inference runs it">
       <optgroup label="Nebius Token Factory">
         <option value="deepseek-ai/DeepSeek-V4-Pro">DeepSeek V4 Pro</option>
+        <option value="zai-org/GLM-5.2">GLM-5.2</option>
       </optgroup>
       <optgroup label="Vercel AI Gateway">
         <option value="deepseek/deepseek-v4-pro">DeepSeek V4 Pro</option>
+        <option value="zai/glm-5.2">GLM-5.2</option>
       </optgroup>
     </select>
     <button class="primary" id="solve">Solve</button>
@@ -350,7 +352,7 @@
         <p>Each dropdown model is pinned to one service: Nebius Token Factory or
         Vercel AI Gateway. Tools, LangGraph loop, grid engine, and puzzle stay the
         same; only the endpoint and model id change. Fair pairs use the same open
-        weights (DeepSeek V4 Pro). Solve one provider at a time, or
+        weights (DeepSeek V4 Pro or GLM-5.2). Solve one provider at a time, or
         press Race / Generate to fire both at once and chart client-measured
         wall time.</p>
       </div>
@@ -699,6 +701,11 @@ const PAIRS = [
     label: "DeepSeek V4 Pro",
     nebius: "deepseek-ai/DeepSeek-V4-Pro",
     vercel: "deepseek/deepseek-v4-pro",
+  },
+  {
+    label: "GLM-5.2",
+    nebius: "zai-org/GLM-5.2",
+    vercel: "zai/glm-5.2",
   },
 ];
 
