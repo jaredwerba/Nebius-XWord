@@ -149,6 +149,9 @@
   .bar-fill.nebius { background: #7A9E00; }
   .bar-fill.vercel { background: var(--purple); }
   .bar-val { font-size: .8rem; font-weight: 600; color: var(--navy); white-space: nowrap; }
+  .avg-note { font-size: .78rem; color: var(--dim); margin: .45rem 0 0; }
+  .rows-head { font-size: .74rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--dim); padding-top: .2rem; }
+  #chart-rows { margin-top: 1rem; }
 
   section { margin-top: 3rem; }
   section > h2 { font-size: 1.25rem; font-weight: 800; letter-spacing: -.01em; margin: 0 0 1rem; }
@@ -230,12 +233,37 @@
 
   <div id="status">Pick a puzzle and press Solve.</div>
 
-  <section id="chart-section" hidden>
+  <section id="chart-section">
     <h2>Speed comparison</h2>
-    <p class="chart-note">Wall-clock time from this browser, same model on both
-    services — shorter is faster. Each race adds a row. One race is one sample:
-    expect the ratio to move between runs.</p>
-    <div class="card" id="chart-rows"></div>
+    <p class="chart-note">End-to-end time from the browser, with the same model
+    on both services — shorter is faster. Press Race and each new comparison
+    adds a row below the average. One race is one sample: expect the ratio to
+    move between runs.</p>
+    <div class="card">
+      <!-- Averages of the 4 recorded races: Nebius (8.9+11.8+19.5+29.8)/4,
+           Vercel (25.0+24.8+77.8+87.3)/4. All ran DeepSeek V4 Pro. -->
+      <div class="race-row">
+        <h3>Recorded average — <span class="ratio">Nebius 3.1× faster</span></h3>
+        <div class="bar-line" title="Nebius Token Factory · deepseek-ai/DeepSeek-V4-Pro · mean of 4 races">
+          <span class="bar-label">Nebius</span>
+          <div class="bar-track">
+            <div class="bar-fill nebius" style="width:24.1%"></div>
+            <span class="bar-val">17.5s · DeepSeek V4 Pro</span>
+          </div>
+        </div>
+        <div class="bar-line" title="Vercel AI Gateway · deepseek/deepseek-v4-pro · mean of 4 races">
+          <span class="bar-label">Vercel</span>
+          <div class="bar-track">
+            <div class="bar-fill vercel" style="width:74%"></div>
+            <span class="bar-val">53.7s · DeepSeek V4 Pro</span>
+          </div>
+        </div>
+        <p class="avg-note">Average of 4 recorded races, 10 August 2026. The
+        same DeepSeek V4 Pro weights ran on both services. Puzzles: two 3×3
+        solves, one 5×5, and one generated 5×5 solved blind.</p>
+      </div>
+    </div>
+    <div class="card" id="chart-rows" hidden></div>
   </section>
 
   <section>
@@ -684,7 +712,7 @@ function chartAppend(nebius, vercel) {
     v: vercel.payload.stats,
   });
   renderChart();
-  $("chart-section").hidden = false;
+  $("chart-rows").hidden = false;
 }
 
 function renderChart() {
@@ -692,6 +720,10 @@ function renderChart() {
   const max = Math.max(...raceHistory.flatMap((r) => [r.tn, r.tv]));
   const rows = $("chart-rows");
   rows.innerHTML = "";
+  const head = document.createElement("div");
+  head.className = "rows-head";
+  head.textContent = "Races run in this session";
+  rows.appendChild(head);
   for (const r of [...raceHistory].reverse()) {
     const winner = r.tn <= r.tv ? "Nebius" : "Vercel";
     const ratio = (Math.max(r.tn, r.tv) / Math.min(r.tn, r.tv)).toFixed(1);
@@ -714,7 +746,8 @@ function renderChart() {
       track.className = "bar-track";
       const fill = document.createElement("div");
       fill.className = "bar-fill " + cls;
-      fill.style.width = ((secs / max) * 100).toFixed(1) + "%";
+      // Longest bar stops at 74% so its value label never leaves the card.
+      fill.style.width = ((secs / max) * 74).toFixed(1) + "%";
       const val = document.createElement("span");
       val.className = "bar-val";
       val.textContent = secs.toFixed(1) + "s";

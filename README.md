@@ -206,7 +206,9 @@ color-vision separation, with a script and not by eye.
 
 Races I recorded while building: 8.9s vs 25.0s, 11.8s vs 24.8s, 19.5s vs
 77.8s, and a generated puzzle at 29.8s vs 87.3s. Nebius won each one, by 2.1×
-to 4.0×. Treat any single race as one sample: the clock starts in the
+to 4.0×. The page shows the recorded average as a permanent chart: Nebius
+17.5s, the gateway 53.7s — Nebius 3.1× faster on the same DeepSeek V4 Pro
+weights. New races add rows below that average. Treat any single race as one sample: the clock starts in the
 browser, includes the network and any cold start, and providers share load.
 That honesty is deliberate — the chart shows measurements, not marketing.
 
