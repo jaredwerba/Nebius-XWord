@@ -133,15 +133,19 @@
   #status.ok::before { content: ""; display: inline-block; width: .65rem; height: .65rem; border-radius: 50%; background: var(--lime); border: 2px solid var(--navy); margin-right: .5rem; vertical-align: baseline; }
   #status.err { border-color: var(--bad); color: var(--bad); }
 
-  /* Pitch video */
-  #video-section { margin-top: 1.25rem; }
+  /* Video + speed comparison, side by side. auto-fit means the chart takes
+     the full row by itself on deploys that carry no video. */
+  .duo {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+    gap: 1.25rem; align-items: start; margin-top: 1.25rem;
+  }
+  .duo > section { margin-top: 0; }
   #video-section h2 { font-size: 1.05rem; font-weight: 800; margin: 0 0 .55rem; }
-  .video-card { max-width: 720px; padding: .6rem; }
+  .video-card { padding: .6rem; }
   .video-card video { display: block; width: 100%; border-radius: 10px; background: var(--ink); }
 
   /* Speed-comparison chart. Bar fills are validated for contrast and CVD
      separation on the white card (#7A9E00 is the dark step of the brand lime). */
-  #chart-section { margin-top: 1.25rem; }
   #chart-section h2 { font-size: 1.05rem; font-weight: 800; margin: 0 0 .3rem; }
   .chart-note { color: var(--dim); font-size: .85rem; margin: 0 0 .8rem; max-width: 60rem; }
   .race-row { padding: .95rem 0 .55rem; }
@@ -151,9 +155,14 @@
   .bar-line { display: grid; grid-template-columns: 4.2rem 1fr; gap: .6rem; align-items: center; margin-bottom: .4rem; }
   .bar-label { font-size: .78rem; font-weight: 600; color: var(--dim); text-align: right; }
   .bar-track { display: flex; align-items: center; gap: .5rem; min-width: 0; }
-  .bar-fill { height: 20px; border-radius: 0 4px 4px 0; min-width: 3px; flex: none; }
+  .bar-fill {
+    height: 20px; border-radius: 0 4px 4px 0; min-width: 3px; flex: none;
+    transition: width 900ms cubic-bezier(.22, .9, .3, 1), filter 150ms;
+  }
   .bar-fill.nebius { background: #7A9E00; }
   .bar-fill.vercel { background: var(--purple); }
+  .bar-line:hover .bar-fill { filter: brightness(1.12); }
+  @media (prefers-reduced-motion: reduce) { .bar-fill { transition: filter 150ms; } }
   .bar-val { font-size: .8rem; font-weight: 600; color: var(--navy); white-space: nowrap; }
   .avg-note { font-size: .78rem; color: var(--dim); margin: .45rem 0 0; }
   .rows-head { font-size: .74rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--dim); padding-top: .2rem; }
@@ -239,6 +248,7 @@
 
   <div id="status">Pick a puzzle and press Solve.</div>
 
+  <div class="duo">
   <section id="video-section" class="video-only">
     <h2>60 seconds from Jared</h2>
     <div class="card video-card">
@@ -281,6 +291,7 @@
     </div>
     <div class="card" id="chart-rows" hidden></div>
   </section>
+  </div>
 
   <section id="external-section">
     <h2>A real external puzzle</h2>
@@ -803,7 +814,12 @@ function renderChart() {
       const fill = document.createElement("div");
       fill.className = "bar-fill " + cls;
       // Longest bar stops at 74% so its value label never leaves the card.
-      fill.style.width = ((secs / max) * 74).toFixed(1) + "%";
+      // Start at zero and grow, so a fresh race row draws itself in.
+      const target = ((secs / max) * 74).toFixed(1) + "%";
+      fill.style.width = "0%";
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        fill.style.width = target;
+      }));
       const val = document.createElement("span");
       val.className = "bar-val";
       val.textContent = secs.toFixed(1) + "s";
@@ -938,9 +954,26 @@ async function checkAsset(path, cls) {
 const checkResume = () => checkAsset("/jared-werba-resume.pdf", ".resume-only");
 const checkVideo = () => checkAsset("/jared-werba-pitch.mp4", ".video-only");
 
+// The recorded-average bars grow in when the chart first scrolls into view.
+function animateAverageBars() {
+  const fills = [...document.querySelectorAll("#chart-section .bar-fill")];
+  const targets = fills.map((f) => f.style.width);
+  fills.forEach((f) => (f.style.width = "0%"));
+  const grow = () => fills.forEach((f, i) => (f.style.width = targets[i]));
+  if (!("IntersectionObserver" in window)) return grow();
+  const io = new IntersectionObserver((entries) => {
+    if (entries.some((e) => e.isIntersecting)) {
+      requestAnimationFrame(grow);
+      io.disconnect();
+    }
+  }, { threshold: 0.4 });
+  io.observe(document.getElementById("chart-section"));
+}
+
 async function init() {
   checkResume();
   checkVideo();
+  animateAverageBars();
   const puzzles = await api("/api/puzzles");
   const sel = $("puzzle");
   puzzles.forEach((p) => sel.add(new Option(p.title, p.id)));
