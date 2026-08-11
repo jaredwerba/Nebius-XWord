@@ -60,7 +60,8 @@ def run_graph(puzzle, script, max_turns=24):
     fake = GenericFakeChatModel(messages=iter(script))
     graph = build_solver_graph(fake, executor, max_turns=max_turns)
     final = graph.invoke(
-        {"messages": [], "turns": 0}, config={"recursion_limit": 2 * max_turns + 4}
+        {"messages": [], "turns": 0, "nudges": 0},
+        config={"recursion_limit": 2 * max_turns + 12},
     )
     return executor, final
 
@@ -86,12 +87,23 @@ def test_agent_end_to_end_with_fake_model(puzzle):
     assert result.grid.is_complete()
 
 
-def test_no_tool_calls_ends_run(puzzle):
-    fake = GenericFakeChatModel(messages=iter([AIMessage(content="I give up.")]))
+def test_prose_only_model_is_nudged_then_run_ends(puzzle):
+    # Four prose replies: the initial one plus one per allowed nudge (3).
+    script = [AIMessage(content="I give up.") for _ in range(4)]
+    fake = GenericFakeChatModel(messages=iter(script))
     result = CrosswordAgent(chat_model=fake).solve(puzzle)
     assert result.submitted is False
-    assert result.turns == 1
+    assert result.turns == 4  # a model that never calls tools still terminates
     assert not result.grid.is_complete()
+
+
+def test_nudge_recovers_a_prose_start(puzzle):
+    script = [AIMessage(content="Let me think about this puzzle first...")] + SOLVE_3X3_SCRIPT
+    fake = GenericFakeChatModel(messages=iter(script))
+    result = CrosswordAgent(chat_model=fake).solve(puzzle)
+    assert result.submitted is True
+    assert result.grid.is_complete()
+    assert result.turns == 3  # prose turn + the two scripted solving turns
 
 
 def test_max_turns_cap(puzzle):

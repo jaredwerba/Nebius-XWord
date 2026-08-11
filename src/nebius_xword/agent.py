@@ -172,6 +172,7 @@ class CrosswordAgent:
                 ),
             ],
             "turns": 0,
+            "nudges": 0,
         }
         yield {"event": "start", "model": self.model, "puzzle": puzzle.id}
 
@@ -180,7 +181,7 @@ class CrosswordAgent:
         try:
             for update in graph.stream(
                 init,
-                config={"recursion_limit": 2 * self.max_turns + 4},
+                config={"recursion_limit": 2 * self.max_turns + 12},
                 stream_mode="updates",
             ):
                 if "agent" in update:

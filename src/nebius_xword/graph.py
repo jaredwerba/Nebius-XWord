@@ -12,7 +12,7 @@ TOOL_SCHEMAS — fake chat models used in tests don't implement bind_tools.
 from __future__ import annotations
 
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import ToolMessage
+from langchain_core.messages import HumanMessage, ToolMessage
 from langgraph.graph import END, START, MessagesState, StateGraph
 
 from .tools import ToolExecutor
@@ -20,6 +20,7 @@ from .tools import ToolExecutor
 
 class AgentState(MessagesState):
     turns: int  # number of LLM calls made so far
+    nudges: int  # times the model answered in prose and was pushed back to tools
 
 
 def window_messages(messages: list, keep_last: int) -> list:
@@ -70,8 +71,27 @@ def build_solver_graph(
             )
         return {"messages": results}
 
+    def nudge_node(state: AgentState) -> dict:
+        # Some models answer in prose instead of calling a tool, especially on
+        # the first turn of a large puzzle. Ending the run there would waste
+        # it, so push back — a bounded number of times, so a model that never
+        # calls tools still terminates.
+        if verbose:
+            print(f"[turn {state['turns']}] model replied in prose; nudging back to tools")
+        return {
+            "messages": [HumanMessage(content=(
+                "Do not reply in prose. Use the tools: call fill_slot for the "
+                "answers you know, and call submit when the grid is complete."
+            ))],
+            "nudges": state["nudges"] + 1,
+        }
+
     def after_agent(state: AgentState) -> str:
-        return "tools" if state["messages"][-1].tool_calls else END
+        if state["messages"][-1].tool_calls:
+            return "tools"
+        if executor.submitted or state["turns"] >= max_turns or state["nudges"] >= 3:
+            return END
+        return "nudge"
 
     def after_tools(state: AgentState) -> str:
         if executor.submitted or state["turns"] >= max_turns:
@@ -81,7 +101,9 @@ def build_solver_graph(
     builder = StateGraph(AgentState)
     builder.add_node("agent", agent_node)
     builder.add_node("tools", tools_node)
+    builder.add_node("nudge", nudge_node)
     builder.add_edge(START, "agent")
-    builder.add_conditional_edges("agent", after_agent, ["tools", END])
+    builder.add_conditional_edges("agent", after_agent, ["tools", "nudge", END])
     builder.add_conditional_edges("tools", after_tools, ["agent", END])
+    builder.add_edge("nudge", "agent")
     return builder.compile()
