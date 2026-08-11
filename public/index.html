@@ -133,6 +133,12 @@
   #status.ok::before { content: ""; display: inline-block; width: .65rem; height: .65rem; border-radius: 50%; background: var(--lime); border: 2px solid var(--navy); margin-right: .5rem; vertical-align: baseline; }
   #status.err { border-color: var(--bad); color: var(--bad); }
 
+  /* Pitch video */
+  #video-section { margin-top: 1.25rem; }
+  #video-section h2 { font-size: 1.05rem; font-weight: 800; margin: 0 0 .55rem; }
+  .video-card { max-width: 720px; padding: .6rem; }
+  .video-card video { display: block; width: 100%; border-radius: 10px; background: var(--ink); }
+
   /* Speed-comparison chart. Bar fills are validated for contrast and CVD
      separation on the white card (#7A9E00 is the dark step of the brand lime). */
   #chart-section { margin-top: 1.25rem; }
@@ -232,6 +238,16 @@
   </div>
 
   <div id="status">Pick a puzzle and press Solve.</div>
+
+  <section id="video-section" class="video-only">
+    <h2>60 seconds from Jared</h2>
+    <div class="card video-card">
+      <video controls preload="metadata" playsinline>
+        <source src="/jared-werba-pitch.mp4" type="video/mp4">
+        Your browser does not support the video tag.
+      </video>
+    </div>
+  </section>
 
   <section id="chart-section">
     <h2>Speed comparison</h2>
@@ -907,19 +923,24 @@ async function generate() {
   }
 }
 
-// The résumé PDF is not in version control, so deployments built from the
-// repo do not carry it. Hide the link rather than show a dead one.
-async function checkResume() {
+// The résumé PDF and the pitch video are not in version control, so
+// deployments built from the repo do not carry them. Hide rather than show a
+// dead link or an empty player.
+async function checkAsset(path, cls) {
   let ok = false;
   try {
-    const res = await fetch("/jared-werba-resume.pdf", { headers: { Range: "bytes=0-0" } });
+    const res = await fetch(path, { headers: { Range: "bytes=0-0" } });
     ok = res.ok;
   } catch { ok = false; }
-  if (!ok) document.querySelectorAll(".resume-only").forEach((el) => el.remove());
+  if (!ok) document.querySelectorAll(cls).forEach((el) => el.remove());
 }
+
+const checkResume = () => checkAsset("/jared-werba-resume.pdf", ".resume-only");
+const checkVideo = () => checkAsset("/jared-werba-pitch.mp4", ".video-only");
 
 async function init() {
   checkResume();
+  checkVideo();
   const puzzles = await api("/api/puzzles");
   const sel = $("puzzle");
   puzzles.forEach((p) => sel.add(new Option(p.title, p.id)));

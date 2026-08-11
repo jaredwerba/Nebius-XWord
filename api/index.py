@@ -161,6 +161,15 @@ def resume() -> FileResponse:
     return FileResponse(path, media_type="application/pdf")
 
 
+@app.get("/jared-werba-pitch.mp4")
+def pitch_video() -> FileResponse:
+    # Same pattern as the resume: untracked, carried by CLI deploys only.
+    path = ROOT / "public" / "jared-werba-pitch.mp4"
+    if not path.is_file():
+        raise HTTPException(404, "video not included in this deployment")
+    return FileResponse(path, media_type="video/mp4")
+
+
 @app.get("/api/puzzles")
 def list_puzzles() -> list[dict]:
     out = []

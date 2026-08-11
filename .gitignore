@@ -1,8 +1,10 @@
 # Secrets
 .env
 
-# Personal documents — deployed with the site, kept out of version control
+# Personal documents and media — deployed with the site, kept out of version control
 public/jared-werba-resume.pdf
+public/jared-werba-pitch.mp4
+public/nebius.mov
 
 # Python
 __pycache__/

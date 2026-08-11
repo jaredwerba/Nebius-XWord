@@ -1,5 +1,7 @@
 # Keep local-only files out of the deployment bundle. Secrets belong in the
 # project's environment variables, not in an uploaded file.
+# The 80MB .mov source stays local; only the transcoded mp4 deploys.
+public/nebius.mov
 .env
 .env.local
 .venv
