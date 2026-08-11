@@ -368,15 +368,33 @@ from ~420s to 153s; post-trim regression run solved 4/4 in 2/3/2/2 turns
   Copyright: puzzle text lives only under gitignored `data/external/`; the
   repo ships code.
 
-  Measured outcome (2026-08-11, both models on Nebius, max_turns=40, no key
-  so scoring uses audit_fill + cross-model agreement):
-  - Qwen3-235B: 42.7s, hit the turn cap, filled 16/60 slots, 234k tokens,
-    88% of its entries in-dictionary. It thrashes: fills, conflicts, clears.
-  - DeepSeek V4 Pro: 282.2s, hit the turn cap, filled 57/60, 1.09M tokens,
-    77% in-dictionary (13 invented-looking entries).
-  - Cross-model agreement 5/60 (8%) → at least one fill is mostly wrong;
-    plausibly both. Conclusion recorded honestly: a real 13×13 daily is far
-    beyond what this agent solves reliably today; the fixed 3×3–7×7 set is
-    the current competence envelope. Cost of the experiment ≈ $2.40.
-  - Obvious next lever (roadmap): per-clue candidate generation + the
-    engine's own constraint search, instead of one monolithic agent loop.
+  Measured outcomes (2026-08-11, both models on Nebius; no key, so scoring
+  uses audit_fill + cross-model agreement):
+
+  Round 1, max_turns=40, full history (pre-window):
+  - Qwen3-235B: 42.7s, cap hit, 16/60 filled, 234k tokens.
+  - DeepSeek V4 Pro: 282.2s, cap hit, 57/60 filled, 1.09M tokens.
+  - Agreement 5/60. Cost ≈ $2.40. Lesson: quadratic history cost and a
+    too-small turn budget dominate the failure.
+
+  Round 2, max_turns=160, history_window=48 (cost now linear in turns):
+  - First Qwen attempt died at turn 1: it answered in prose and the
+    no-tool-calls rule ended the run. This produced the nudge node in
+    graph.py (≤3 corrective pushes back to tool use).
+  - **DeepSeek V4 Pro: submitted a complete 60/60 grid** — 98 turns, 996s,
+    2.44M tokens, ≈$4.40. First full completion of a real external daily.
+    80% of entries in /usr/share/dict/words; several "unknowns" are
+    plausibly abbreviations the dictionary lacks (the puzzle has "(abbr.)"
+    clues). Every crossing is engine-verified consistent, a strong
+    structural constraint on a 60-slot interlock.
+  - Qwen3-235B with the nudge: ran all 160 turns, 146.4s, 787k tokens,
+    ≈$0.16, but filled only 36/60 (61% in-vocab). Fast and cheap is not
+    enough here.
+  - Agreement V4 Pro vs Qwen: 12/60 (20%) — weak corroboration. Honest
+    claim: an agent can now *complete* a hard external crossword with full
+    structural consistency; per-answer correctness is unverifiable without
+    the publisher's key, and cross-model agreement does not yet support a
+    strong accuracy claim. Total external-experiment spend ≈ $7.
+  - Next lever unchanged: per-clue candidate lists + engine-side constraint
+    search; also a cheap second opinion (different model family) to make
+    agreement a stronger signal.
