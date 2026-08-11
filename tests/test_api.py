@@ -142,23 +142,35 @@ def test_each_model_routes_to_its_own_service(monkeypatch):
         assert conn["api_key"] == "gateway-token"
 
 
-def test_compare_pair_is_consistent():
-    """The race runs one id on each service; the sets must agree."""
-    from api.index import COMPARE_PAIR, GATEWAY_MODELS, NEBIUS_MODELS
+def test_compare_pairs_are_consistent():
+    """Each race pair runs one id on each service; the sets must agree."""
+    from api.index import COMPARE_PAIRS, GATEWAY_MODELS, NEBIUS_MODELS
 
-    assert COMPARE_PAIR["nebius"] in NEBIUS_MODELS
-    assert COMPARE_PAIR["gateway"] in GATEWAY_MODELS
-    assert COMPARE_PAIR["nebius"] != COMPARE_PAIR["gateway"]
+    for pair in COMPARE_PAIRS:
+        assert pair["nebius"] in NEBIUS_MODELS
+        assert pair["gateway"] in GATEWAY_MODELS
+        assert pair["nebius"] != pair["gateway"]
 
 
-def test_page_and_server_agree_on_the_pair():
+def test_every_selectable_model_belongs_to_exactly_one_pair():
+    """Whichever model the dropdown offers, a race must be able to pair it."""
+    from api.index import ALLOWED_MODELS, COMPARE_PAIRS
+
+    paired = [m for pair in COMPARE_PAIRS for m in (pair["nebius"], pair["gateway"])]
+    assert sorted(paired) == sorted(ALLOWED_MODELS)  # no model without a twin
+    assert len(paired) == len(set(paired))  # and none in two pairs
+
+
+def test_page_and_server_agree_on_the_pairs():
     from pathlib import Path
 
-    from api.index import COMPARE_PAIR
+    from api.index import COMPARE_PAIRS
 
     page = (Path(__file__).parents[1] / "public" / "index.html").read_text()
-    assert COMPARE_PAIR["nebius"] in page
-    assert COMPARE_PAIR["gateway"] in page
+    for pair in COMPARE_PAIRS:
+        assert pair["nebius"] in page
+        assert pair["gateway"] in page
+        assert pair["label"] in page
 
 
 def test_nebius_base_url_has_no_trailing_slash():

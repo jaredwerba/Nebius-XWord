@@ -692,13 +692,26 @@ const solve = () =>
 
 // -------------------------------------------------------------------- race
 
-// The same weights on both services, so the race compares infrastructure.
-// Must match COMPARE_PAIR in api/index.py (a test keeps them in agreement).
-const PAIR = {
-  label: "DeepSeek V4 Pro",
-  nebius: "deepseek-ai/DeepSeek-V4-Pro",
-  vercel: "deepseek/deepseek-v4-pro",
-};
+// Each pair is the same weights under each service's own id, so a race always
+// compares infrastructure and never model quality. The model dropdown decides
+// which pair runs. Must match COMPARE_PAIRS in api/index.py — a test keeps the
+// page and the server in agreement.
+const PAIRS = [
+  {
+    label: "DeepSeek V4 Pro",
+    nebius: "deepseek-ai/DeepSeek-V4-Pro",
+    vercel: "deepseek/deepseek-v4-pro",
+  },
+  {
+    label: "Qwen3 235B",
+    nebius: "Qwen/Qwen3-235B-A22B-Instruct-2507",
+    vercel: "alibaba/qwen-3-235b",
+  },
+];
+
+// Whichever side of a pair is selected, race that pair.
+const pairFor = (model) =>
+  PAIRS.find((p) => p.nebius === model || p.vercel === model) || PAIRS[0];
 
 function cardLine(card, cls, text) {
   const line = document.createElement("div");
@@ -770,9 +783,10 @@ function makeCard(side, t0) {
 
 const raceHistory = [];
 
-function chartAppend(nebius, vercel) {
+function chartAppend(nebius, vercel, pair) {
   raceHistory.push({
     title: current.title,
+    label: pair.label,
     tn: (nebius.end - nebius.t0) / 1000,
     tv: (vercel.end - vercel.t0) / 1000,
     n: nebius.payload.stats,
@@ -797,7 +811,9 @@ function renderChart() {
     const row = document.createElement("div");
     row.className = "race-row";
     const head = document.createElement("h3");
-    head.innerHTML = `${r.title} — <span class="ratio">${winner} ${ratio}× faster</span>`;
+    const model = r.label ? ` · ${r.label}` : "";
+    head.innerHTML =
+      `${r.title}${model} — <span class="ratio">${winner} ${ratio}× faster</span>`;
     row.appendChild(head);
     for (const [label, cls, secs, stats] of [
       ["Nebius", "nebius", r.tn, r.n],
@@ -831,7 +847,7 @@ function renderChart() {
   }
 }
 
-function raceVerdict(nebius, vercel) {
+function raceVerdict(nebius, vercel, pair) {
   const time = (c) => (c.end - c.t0) / 1000;
   if (!nebius.payload && !vercel.payload) {
     $("status").className = "err";
@@ -863,13 +879,13 @@ function raceVerdict(nebius, vercel) {
   $("status").className = "ok";
   $("status").textContent =
     `${winName} wins — ${winT.toFixed(1)}s vs ${loseT.toFixed(1)}s ` +
-    `(${ratio}× faster) · same model (${PAIR.label}) · ${solvedSummary} · ` +
+    `(${ratio}× faster) · same model (${pair.label}) · ${solvedSummary} · ` +
     `grids ${gridsMatch ? "identical" : "differ"}`;
-  chartAppend(nebius, vercel);
+  chartAppend(nebius, vercel, pair);
 }
 
 // The core of the race: both legs fired in the same tick, one shared clock.
-async function runRace(base, statusText) {
+async function runRace(base, statusText, pair) {
   $("single-run").hidden = true;
   $("compare-run").hidden = false;
   $("status").className = "";
@@ -884,26 +900,27 @@ async function runRace(base, statusText) {
   }, 100);
   try {
     await Promise.allSettled([
-      consume("/api/solve/stream", { ...base, model: PAIR.nebius }, nebius.handler)
+      consume("/api/solve/stream", { ...base, model: pair.nebius }, nebius.handler)
         .catch((err) => nebius.fail(err.message)),
-      consume("/api/solve/stream", { ...base, model: PAIR.vercel }, vercel.handler)
+      consume("/api/solve/stream", { ...base, model: pair.vercel }, vercel.handler)
         .catch((err) => vercel.fail(err.message)),
     ]);
   } finally {
     clearInterval(clock);
   }
-  raceVerdict(nebius, vercel);
+  raceVerdict(nebius, vercel, pair);
 }
 
 async function race() {
   const buttons = [$("solve"), $("generate"), $("race")];
   buttons.forEach((b) => (b.disabled = true));
+  const pair = pairFor(chosenModel());
   const base =
     generated && current.id === generated.id
       ? { solver: "llm", puzzle: generated }
       : { solver: "llm", puzzle_id: current.id };
   try {
-    await runRace(base, `Racing ${PAIR.label} on both services…`);
+    await runRace(base, `Racing ${pair.label} on both services…`, pair);
   } finally {
     buttons.forEach((b) => (b.disabled = false));
   }
@@ -921,15 +938,17 @@ async function generate() {
   $("status").className = "";
   $("status").textContent = "Building a new puzzle…";
   startTimer(90);
+  const pair = pairFor(chosenModel());
   try {
     generated = null;
-    await consume("/api/generate", { model: PAIR.nebius });
+    await consume("/api/generate", { model: pair.nebius });
     if (!generated) {
       throw new Error("the generator did not finish in time — press the button again");
     }
     stopTimer("puzzle ready");
     await runRace({ solver: "llm", puzzle: generated },
-                  `New puzzle ready — racing ${PAIR.label} on both services, blind…`);
+                  `New puzzle ready — racing ${pair.label} on both services, blind…`,
+                  pair);
   } catch (err) {
     stopTimer("failed");
     $("status").className = "err";

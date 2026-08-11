@@ -79,14 +79,24 @@ GATEWAY_MODELS = {
 ALLOWED_MODELS = sorted(NEBIUS_MODELS | GATEWAY_MODELS)
 DEFAULT_MODEL = "deepseek-ai/DeepSeek-V4-Pro"
 
-# The race on the page runs the SAME weights on both services, so the times
-# compare infrastructure and not model quality. The page hardcodes these two
-# ids; tests keep it consistent with the sets above.
-COMPARE_PAIR = {
-    "label": "DeepSeek V4 Pro",
-    "nebius": "deepseek-ai/DeepSeek-V4-Pro",
-    "gateway": "deepseek/deepseek-v4-pro",
-}
+# A race always runs the SAME weights on both services, so the times compare
+# infrastructure and not model quality. Every model on the page belongs to
+# exactly one pair, so whichever model is selected, the race uses its twin on
+# the other service. Tests keep these ids consistent with the sets above and
+# with the page.
+COMPARE_PAIRS = [
+    {
+        "label": "DeepSeek V4 Pro",
+        "nebius": "deepseek-ai/DeepSeek-V4-Pro",
+        "gateway": "deepseek/deepseek-v4-pro",
+    },
+    {
+        "label": "Qwen3 235B",
+        "nebius": "Qwen/Qwen3-235B-A22B-Instruct-2507",
+        "gateway": "alibaba/qwen-3-235b",
+    },
+]
+COMPARE_PAIR = COMPARE_PAIRS[0]  # the default the page opens on
 
 
 def connection_for(model: str | None) -> dict:
